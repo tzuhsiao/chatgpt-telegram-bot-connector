@@ -83,6 +83,8 @@ Do not claim a live round trip passed solely because local tests passed or the S
 
 ## Receiving and recovering events
 
+For the hosted task's ordinary conversation policy, see [normal private conversation](normal-chat.md) and the [reusable task prompt](../prompts/private-chat.md). Task instructions determine which accepted messages receive replies; changing that policy does not require changing the generic Worker transport or registering another webhook. Preserve the original trigger and verify the actual reply behavior separately from callback acceptance.
+
 Incoming accepted text messages are persisted before event delivery. D1 uniqueness and atomic delivery leases coordinate concurrent requests; retries use a stable event ID.
 
 The webhook acknowledges a successful callback, a previously completed delivery, or a terminal failure. A transient callback failure retains pending state and returns a failure to Telegram while the automatic attempt budget remains. A duplicate pending update is reconsidered for delivery according to its lease and backoff, rather than being mistaken for success merely because it was persisted.

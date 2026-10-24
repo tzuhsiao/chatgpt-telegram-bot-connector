@@ -5,7 +5,7 @@ An unofficial, experimental connector that lets ChatGPT receive private Telegram
 The MVP connects **one owner and one dedicated Telegram bot per deployment**, with explicit user and chat allowlists. It uses the Telegram Bot API only: no human-account login, groups, channels, media, or scheduled polling.
 
 > [!WARNING]
-> **Work in progress — not production-ready.** This is an experimental MVP, not a completed Telegram integration. Local tests and limited private hosted checks have passed, but a **successful authorized ChatGPT event subscription**, its **live callback handshake**, and a **Telegram-to-ChatGPT-to-Telegram end-to-end exchange** have not yet been verified. Treat the Quickstart as an implementation guide, not a validated deployment recipe. **Do not enable live Telegram delivery** until the [hosted acceptance gates](docs/operations.md#hosted-acceptance-gates) pass.
+> **Work in progress — not production-ready.** This is an experimental MVP. Treat the Quickstart as an implementation guide and verify each deployment's authentication, event subscription, callback handshake, and real message round trip. Local tests and source publication do not establish those hosted results. **Do not enable live Telegram delivery** until the [hosted acceptance gates](docs/operations.md#hosted-acceptance-gates) pass.
 
 ## Architecture
 
@@ -33,6 +33,8 @@ There are no runtime package dependencies. Local tests use Node.js 24's test run
 4. Configure `SITE_ORIGIN` and the explicit user/chat allowlists through the same native controls. Initiate a genuine ChatGPT subscription; before an origin is configured, expect `callback_origin_not_allowed`. Read the origin-only `requested_callback_origin` from owner-only `get_connector_status`, independently confirm it belongs to the genuine subscription, configure that exact HTTPS origin in `MCP_CALLBACK_ORIGINS`, and retry. Never guess a callback domain or use a wildcard. Keep bot credentials absent during the next step.
 5. Complete the [hosted security and subscription checks](docs/operations.md#hosted-acceptance-gates), including anonymous forged-header rejection and a real authenticated subscription and renewal. **Do not enable Telegram delivery until these gates pass.**
 6. Configure the dedicated bot token and independent webhook secret, then call `configure_telegram_webhook` with an empty object. It refuses to replace a different existing webhook. Test one real Telegram-to-ChatGPT-to-Telegram exchange in the allowlisted private chat.
+
+After acceptance, use the [normal private conversation guide](docs/normal-chat.md) and its reusable [event-task prompt](prompts/private-chat.md) to replace an exact-phrase test policy with ordinary text replies. Configure this on the existing task, retain its trigger, and verify a real multi-turn conversation.
 
 The repository does not include a bot token or deployment identity. Local test success does not establish that hosted authentication or a live Telegram round trip has passed. See [operations](docs/operations.md) for the complete setup, recovery, and verification procedure.
 
