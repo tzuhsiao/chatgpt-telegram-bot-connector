@@ -119,7 +119,7 @@ test('public landing page contains no operational configuration and APIs enforce
   const response=await worker.fetch(new Request('https://connector.example/'),env);
   assert.equal(response.status,200);
   const html=await response.text();
-  assert.match(html,/<title>Telegram Bot<\/title>/);
+  assert.match(html,/<title>Telegram Bot Connector<\/title>/);
   assert.doesNotMatch(html,/ChatGPT Telegram Bot Connector/);
   assert.equal((await worker.fetch(new Request('https://connector.example/api/status'),env)).status,401);
 });
