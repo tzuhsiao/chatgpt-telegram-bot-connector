@@ -235,6 +235,17 @@ an already accepted setup is read-only and does not repeat welcome/test messages
 
 For the hosted task's ordinary conversation policy, see [normal private conversation](normal-chat.md) and the [reusable task prompt](../prompts/private-chat.md). Task instructions determine which accepted messages receive replies; changing that policy does not require changing the generic Worker transport or registering another webhook. Preserve the original trigger and verify the actual reply behavior separately from callback acceptance.
 
+The connector provides notifications and tools rather than mandatory one-to-one
+conversation behavior. Default sends omit optional `reply_to_message_id`. The Dot
+may answer, use a brief/emoji-only text acknowledgment, stay silent, or combine
+several already-arrived messages into a coherent response, retaining unresolved
+substantive requests. No reaction tool, polling loop or collection timer is added.
+Combined plans require frozen actual coverage, a deterministic included-message
+anchor and safe private coordination as described in the guide. Do not change an
+existing plan's key, grouping or quote choice after dispatch or to escape an error.
+Emoji text is not a Telegram reaction; any real reaction needs an actually available
+and separately authorized tool. Policy changes do not expand transport authority.
+
 Incoming accepted text messages are persisted before event delivery. D1 uniqueness and atomic delivery leases coordinate concurrent requests; retries use a stable event ID.
 
 The webhook acknowledges a successful callback, a previously completed delivery, or a terminal failure. A transient callback failure retains pending state and returns a failure to Telegram while the automatic attempt budget remains. A duplicate pending update is reconsidered for delivery according to its lease and backoff, rather than being mistaken for success merely because it was persisted.

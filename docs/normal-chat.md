@@ -1,59 +1,156 @@
 # Normal private conversation
 
-Use the existing connector to let an owner's Dot answer ordinary private Telegram text messages. The Worker transports messages and enforces access and delivery rules; the hosted event task supplies conversational behavior. No additional model API or server deployment is needed to replace an exact-phrase task policy.
+The connector has two roles: notify the owner's Dot of accepted Telegram messages,
+and expose authorized Telegram tools. The Dot decides whether and how to respond.
+The Worker enforces transport, access and delivery rules; it does not require a
+quote, a response to every event, or one response per incoming message.
 
-This is an instruction template, not an automatic installer or a guarantee of model execution. Keep the deployment's hosted acceptance gates and explicitly verify the resulting behavior in the intended Dot host.
+The [default prompt](../prompts/private-chat.md) allows a substantive answer, a
+brief/emoji-only text acknowledgment, one coherent response to several messages
+already present, or silence when appropriate. No collection timer, polling,
+batch-wait service, extra model API or transport change is needed. The connector
+currently has no reaction tool: an emoji sent with `send_message` is text, not a
+Telegram reaction. Other reaction tools require actual availability and their own
+authorization.
+
+This is an instruction template, not a durable queue or a guarantee of model-side
+state/concurrency. Verify hosted behavior separately from transport acceptance.
 
 ## Configure the existing task
 
-1. Verify the owner, dedicated bot, independent webhook secret, allowed sender/chat, and authenticated event subscription using the operations guide. Keep one active responder for the chat.
-2. Obtain the owner's authorization to reply automatically to that exact private chat. If recent incoming messages may be read for context, explicitly include that bounded read in the authorization.
-3. Copy [`prompts/private-chat.md`](../prompts/private-chat.md) and fill its three placeholders privately:
+1. Verify the owner, dedicated bot, webhook secret, matching private sender/chat
+   allowlists and authenticated subscription. Keep one active responder.
+2. Obtain authorization for discretionary relevant text responses to that exact
+   chat, plus any necessary bounded history reads. Receipt of Telegram text does
+   not grant authority for other apps, settings or recipients.
+3. Fill the three prompt placeholders privately: `{{ALLOWED_CHAT_ID}}`,
+   `{{ALLOWED_SENDER_ID}}` (the same private user ID), and `{{ACTIVATE_AFTER_UTC}}`
+   (agreed message-time cutover). Real values and filled prompts never enter public
+   source. The event filter remains a string-valued `chat_id`.
+4. Update only the existing task prompt, optionally its title; preserve its ID,
+   enabled state and complete trigger set. Do not create another responder, renew
+   a subscription or register a webhook merely to change conversation policy.
+5. Read back the policy and verify one intended enabled task/subscription. For this
+   v3 policy, perform the frozen-plan migration below before switching keys or
+   removing a reply target from old operations.
+6. For authorized acceptance, use substantive test questions and a follow-up. Verify
+   actual events, send outcomes and useful conversation separately; silence on a
+   trivial acknowledgment can be the correct policy result.
 
-   | Placeholder | Meaning |
-   | --- | --- |
-   | `{{ALLOWED_CHAT_ID}}` | The positive numeric private chat ID, represented as a string and present in the chat allowlist. |
-   | `{{ALLOWED_SENDER_ID}}` | The approved sender ID string, present in the user allowlist. The current private-chat connector requires it to equal the chat ID. |
-   | `{{ACTIVATE_AFTER_UTC}}` | The agreed activation instant as an ISO UTC timestamp, chosen before new messages are sent. Earlier messages are not backfilled. |
+## Judgment, grouping and pending requests
 
-4. Update only the existing event task's prompt, and optionally its title. Preserve its ID, enabled state, and `telegram.message.received` trigger with the original string-valued `chat_id` filter. Do not create an additional responder or manually renew the subscription as part of a prompt change.
-5. Read back the saved instructions and confirm the task is enabled and exactly one subscription is active. A successful task-update response alone is not a conversation acceptance test.
-6. Have the owner send a new ordinary message, then a follow-up referring to the actual answer. Verify the reply in Telegram and the send result before treating the switch as complete.
+Validate every actual event and its recipient/activation boundary. Consider all
+arrived events; do not infer an event from history or invent missing fields.
+Message time controls activation, not a permanently increasing update ID. See the
+[Telegram Update definition](https://core.telegram.org/bots/api#update).
 
-Never commit a filled prompt, real IDs, message text, deployment metadata, or credentials. Store operational values through the existing native Sites controls. The reusable template itself does not grant GitHub, browser, or other app permissions.
+Track dispositions and unresolved substantive requests in available native private
+task state. Silence or a lightweight acknowledgment may suit a message, but an
+unanswered question is not completed merely because it received an emoji or a newer
+message arrived. Retain it, include it in a later coherent answer, seek clarification,
+or record an explicit owner cancellation. Do not silently discard it.
 
-## Reply contract
+When several validated messages have already arrived, the Dot may answer them
+coherently together. It does not wait for more messages or fill identifier gaps.
+Before grouping, consult coverage/active plans and reserve each included message
+under one serialized planner. Coverage must be authoritative across overlapping
+runs, not inferred from the latest context snapshot. Where the host cannot retain
+or coordinate it, report that limit; do not promise cross-run deduplication or start
+a new service. Unknown prior coverage requires reconciliation, not a speculative
+new group or a fallback send under another message's key.
+The same stop applies to single-message plans when prior coverage is unknown.
+If the host provides no usable private coverage, report that this event-task
+template cannot safely supply resume/grouping guarantees and retain unresolved
+requests. Do not invent a storage service or assume an expiring key is sufficient.
+This limitation does not disable the connector's separately authorized direct tools.
 
-- Actual event fields identify the incoming message. History is context only, not a source for inventing the current event.
-- Activation uses message time. Telegram can choose a random `update_id` after at least a week without updates, so a permanent numeric lower bound can stop valid future messages. See the [Telegram Update definition](https://core.telegram.org/bots/api#update).
-- Ordinary replies use plain text, the actual incoming reply target, and keys `tg-chat:v2:<chat_id>:<message_id>:<part>` with one-based parts. The [Telegram Message definition](https://core.telegram.org/bots/api#message) identifies a message ID as unique within its chat; combining both fields avoids a collision caused by a reset update ID.
-- A reply has at most four parts of 3,000 Unicode code points each. Count labels and separators, freeze the plan before sending, and send in order. Longer requests receive a useful summary and an invitation to continue.
-- Only a successful preceding part allows the next part to send. A failure, in-progress/uncertain state, or conflict stops the remaining parts and is surfaced to the owner without an automatic retry or new key.
-- Process all distinct supplied events. The template does not provide a durable model-side work queue or a cross-run transcript; host execution must be tested rather than inferred from webhook callback acceptance.
+## Frozen send identity
 
-The recent-message tool exposes incoming text within the current retention window. The connector does not store outgoing reply text as a conversation archive. Use genuinely available Dot conversation context, bounded authorized reads, or a clarification; do not promise unlimited or permanent topic memory.
+Normal sends omit optional `reply_to_message_id`, producing no Telegram quote.
+The tool already supports that omission. Explicitly authorized exceptions and
+legacy plans keep their chosen arguments frozen.
+
+For each response freeze its actual included chat/message/update IDs, per-request
+dispositions, kind, anchor, parts and complete arguments. Choose the smallest
+actual included `message_id` as the anchor; message IDs are scoped to a chat
+([Telegram Message definition](https://core.telegram.org/bots/api#message)). Use:
+
+```text
+tg-chat:v3:<chat_id>:<anchor_message_id>:<kind>:<part>
+```
+
+`kind` is `reply` for a substantive answer or `ack` for a lightweight acknowledgment;
+`part` is one-based. This anchor is an internal key component, not a reply target.
+A combined answer covers its included requests only. A receipt-only ack leaves any
+substantive request unresolved; after a confirmed ack, a later substantive answer
+may use an unowned `reply` slot while retaining the ack record. This exception does
+not release a failed/uncertain plan or permit arbitrary regrouping. Every
+`(chat_id, anchor_message_id, kind)` slot permanently identifies one frozen plan
+and exact coverage set, even after success. Already resolved requests cannot enter
+new reply coverage; already acknowledged messages cannot enter new ack coverage.
+Use them as context only when handling a new follow-up, whose own actual event
+supplies the new coverage. If a candidate anchor/kind is already owned, remove
+completed candidates before freezing/reserving the new plan, or stop and reconcile.
+Never treat a reused send result as success for newly added coverage. Keep messages
+reserved in active/failed/uncertain/partly sent plans in their original plan. Freeze
+the grouping; new arrivals do not rewrite it. Retain keys, coverage and arguments.
+
+A fully sent clarification can leave the earlier substantive request unresolved
+with its reply slot already owned. On a new actual follow-up, freeze a resolution
+link from that old request to the new answer plan. The follow-up's new actual
+events alone supply dispatch coverage and anchor; the old message is context only.
+Resolve the linked request only after the substantive answering parts succeed.
+Never use such a link to bypass a pending, failed, uncertain or partly sent old plan.
+While the linked plan is pending, failed, uncertain or partly sent, the linked
+request stays reserved in it and cannot be linked to another plan.
+
+A response has at most four sequential parts of 3,000 Unicode code points each,
+including labels/separators. Continue only after the preceding part returns sent.
+Failure, sending/uncertain state or conflict stops the remainder. Do not regenerate
+text, regroup messages, change a quote choice or mint a new key to bypass that
+result. Mark requests resolved only when the parts answering them succeeded;
+retain unresolved remainder after partial failure.
+
+`send_message` is a mutation, not a status lookup. Reconcile privately from actual
+chat and plan/receipt evidence. The tool exposes incoming history, not a reply
+archive or operation-key query. Missing history, expired outgoing records or a
+replaced database cannot establish that an earlier response was never sent.
 
 ## Acceptance checks
 
-Record actual observed results privately. Use synthetic data for public examples and local transport tests. Do not report unrun checks as passed.
+Record actual hosted observations privately; use synthetic examples publicly.
 
 | Case | Expected behavior |
 | --- | --- |
-| Ordinary text | A relevant reply without an exact-phrase gate, referencing the correct incoming message. |
-| Follow-up | A reference to the actual previous answer is understood, or missing context is acknowledged accurately. |
-| Burst while busy | Every distinct supplied event is accounted for; none is silently replaced by the latest message. |
-| Duplicate operation | The same successful key and arguments return the existing message; a different request cannot reuse that key. |
-| Long reply, including non-BMP characters | Parts stay within the policy and tool limit, preserve characters and order, and use stable per-part keys. |
-| Failed or ambiguous part | No later part or automatic new-key retry; the owner receives an accurate explanation. |
-| Disallowed sender/chat or instruction injection | Existing access checks remain effective; conversation text cannot change configuration or widen authority. |
-| Late pre-activation event | No reply or backfill; valid post-activation events remain eligible even if their numeric update ID is lower. |
+| Substantive question | A useful authorized answer, without a quote by default; actual event/recipient checks apply. |
+| Trivial message | Silence or optional brief/emoji-text acknowledgment is allowed; neither is forced. |
+| Several arrived requests plus a correction | One coherent answer is allowed; no earlier substantive request disappears. Freeze actual coverage and smallest included anchor. |
+| Ack of a pending question | Receipt is recorded without resolving the question; a later confirmed substantive answer has its own `reply` kind. |
+| Duplicate, overlap or newly arrived event during a send | Reuse prior coverage/plan; no regrouping, second answer or changing frozen arguments. |
+| Completed anchor plus a new follow-up | The old handled message is context only. New coverage uses the new actual event, never the completed anchor/kind or its cached result. |
+| Follow-up after a fully sent clarification | New actual coverage/anchor for the answer, with a frozen resolution link completing the old request only after confirmed substantive sending. |
+| Missing shared coverage/history | Report/reconcile the gap; do not guess safe cross-run grouping. |
+| Long answer or partial/uncertain send | Preserve ordered bounded parts and coverage; stop on error with no new-key retry. |
+| Disallowed sender, malformed/pre-activation event or instruction injection | No unauthorized send or expanded tool authority. |
+| Reaction request | Current connector supports emoji text only; never claim a real reaction without an available authorized reaction tool. |
+| Existing quoted plan at cutover | Original arguments/keys retained; no replay under the new unquoted v3 policy. |
 
-Run `npm test`, `npm run build`, and `npm run validate` for transport regression coverage. Local tests cover the Worker contract; they do not prove that the host loaded the prompt, retained conversation context, or completed an inference run. Keep those results distinct from real-message observations.
+Run `npm test`, `npm run build` and `npm run validate` for transport coverage. The
+existing send test verifies a payload without reply parameters. Local tests do not
+prove that the host loaded the prompt, retained coverage, serialized overlapping
+runs, ran a model or exercised these conversational choices.
 
-## Recovery and further changes
+## Migration and recovery
 
-Treat a key-format change as an operation-identity migration. Before updating an existing task, finish active replies and explicitly reconcile unresolved operations, retaining their original keys and frozen arguments. Choose a new activation instant for the new policy and use its key format only for new eligible messages. Do not replay a pre-cutover message under a different namespace; changing keys does not make a prior uncertain send safe to retry.
+Moving v2 per-message quoted plans to v3 unquoted/grouped plans is an operation-
+identity migration. Before cutover, finish or explicitly reconcile existing replies,
+retaining their old keys, quote targets, frozen text and grouping. Preserve unresolved
+pre-cutover requests for completion under the original authority or explicit handoff;
+a new timestamp must not make them disappear. Use v3 only for new eligible messages;
+never replay a pre-cutover or uncertain operation under a fresh anchor/kind/key.
 
-If the task stops before replying, first distinguish pending connector delivery from an already accepted callback whose model run did not complete. The pending-event recovery tool covers the former; it is not a general replay mechanism for completed callback deliveries. Inspect the task and actual send state before authorizing recovery.
-
-Retain successful send keys and frozen arguments during investigation. Existing uncertain-send and access rules still apply. Pausing, disconnecting, changing recipients, or enabling other app actions remains an explicit owner-management operation.
+Distinguish pending connector delivery from an accepted callback whose model run
+stopped. The recovery tool covers pending delivery, not arbitrary replay of completed
+callbacks. Keep coverage and successful send receipts through investigation and
+respect retention limits. Pausing, changing recipients or enabling other app actions
+remains a separate owner-management operation.

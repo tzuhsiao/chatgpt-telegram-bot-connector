@@ -3,6 +3,12 @@
 This unofficial, experimental connector is primarily designed for dots. One Site
 hosts an MCP Worker and D1 database for one owner and one dedicated Telegram bot.
 It transports private text and authorized replies; the host runs the model.
+Its roles are message notification and authorized Telegram tools. The Dot decides
+whether to answer, acknowledge briefly (including emoji-only text), combine several
+already-arrived messages into one coherent reply, or remain silent. Normal sends
+omit `reply_to_message_id`; a separate quoted reply per event is not required.
+Keep unresolved substantive requests and frozen plan coverage rather than dropping
+them when later messages arrive. Current tools provide no Telegram reaction API.
 It does not use a human Telegram login, groups, channels, media, polling, a separate
 inference API or a second relay service.
 
@@ -43,7 +49,7 @@ tool names, event names, package name and connection references on upgrades.
 Do not create a separate plugin for an App already provisioned by Sites.
 
 Obtain explicit approval at the credential-configuration and bot-connection steps.
-Automatic replies and bounded history reads need owner authorization for the exact
+Discretionary responses and bounded history reads need owner authorization for the exact
 chat. Never ask for tokens in normal chat. Use protected native secret entry; if
 unavailable, give the owner the exact native Sites settings step and wait. A tool
 accepting a plaintext string with `is_secret: true` stores a secret but is not a
@@ -117,6 +123,11 @@ recovery; [design](docs/design.md) for tradeoffs; and
 [task prompt](prompts/private-chat.md) for policy. Reuse the existing task and trigger
 when changing its policy. Local tests and callback acceptance do not prove model
 execution, subscription renewal or a real Telegram round trip.
+Follow the normal-chat guide's deterministic actual-message anchor, per-kind plan
+keys and coverage/migration rules when grouping responses. Do not invent shared
+state, timer/polling collection, reaction support or new app authority. An optional
+emoji acknowledgment is text via `send_message`; a real reaction needs an actually
+available, separately authorized tool. The short public README stays unchanged.
 
 Keep Telegram credentials absent while a new deployment's authentication,
 persistence and subscription gates are tested. Verify the real public edge rejects
