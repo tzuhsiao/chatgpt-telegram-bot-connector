@@ -530,7 +530,8 @@ function identityFor(request,env) {
   return {authenticated:!!caller,caller_user_id:caller,owner_configured:!!env.OWNER_USER_ID,is_owner:!!caller&&caller===env.OWNER_USER_ID};
 }
 
-export function createWorker({fetch:networkFetch=globalThis.fetch,now=Date.now} = {}) { return {
+// workerd's native fetch requires its global receiver even when stored on runtime.
+export function createWorker({fetch:networkFetch=globalThis.fetch.bind(globalThis),now=Date.now} = {}) { return {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
     if(path==='/' && request.method==='GET') return landingPage();
