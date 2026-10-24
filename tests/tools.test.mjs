@@ -117,6 +117,9 @@ test('activity cleanup deletes expired content while retaining recent records',a
 test('public landing page contains no operational configuration and APIs enforce owner access',async t=>{
   const env=environment();t.after(()=>env.DB.close());const worker=createWorker();
   const response=await worker.fetch(new Request('https://connector.example/'),env);
-  assert.equal(response.status,200);assert.match(await response.text(),/ChatGPT Telegram Bot Connector/);
+  assert.equal(response.status,200);
+  const html=await response.text();
+  assert.match(html,/<title>Telegram Bot<\/title>/);
+  assert.doesNotMatch(html,/ChatGPT Telegram Bot Connector/);
   assert.equal((await worker.fetch(new Request('https://connector.example/api/status'),env)).status,401);
 });
