@@ -4,6 +4,9 @@ An unofficial, experimental connector that lets ChatGPT receive private Telegram
 
 The MVP connects **one owner and one dedicated Telegram bot per deployment**, with explicit user and chat allowlists. It uses the Telegram Bot API only: no human-account login, groups, channels, media, or scheduled polling.
 
+> [!WARNING]
+> **Work in progress — not production-ready.** This is an experimental MVP, not a completed Telegram integration. Local tests and limited private hosted checks have passed, but a **successful authorized ChatGPT event subscription**, its **live callback handshake**, and a **Telegram-to-ChatGPT-to-Telegram end-to-end exchange** have not yet been verified. Treat the Quickstart as an implementation guide, not a validated deployment recipe. **Do not enable live Telegram delivery** until the [hosted acceptance gates](docs/operations.md#hosted-acceptance-gates) pass.
+
 ## Architecture
 
 A single ChatGPT Site runs a bundled Worker with a D1 database:
