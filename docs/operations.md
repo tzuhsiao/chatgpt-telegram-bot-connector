@@ -2,6 +2,59 @@
 
 This guide covers the single-owner, dedicated-bot MVP. It uses ChatGPT Sites, a Worker, and D1. It does not require a human Telegram account session, external model API, scheduled polling, or a second relay service.
 
+For agent-driven installation, start with [AGENTS.md](../AGENTS.md) and the
+[setup skill](../.agents/skills/telegram-setup/SKILL.md). Install/reuse the Site and
+its canonical plugin first, then guide the two intended owner inputs. Use
+**Telegram Bot** for product display names while retaining stable IDs.
+
+## Setup capabilities and limits
+
+| Step | Supported path and boundary |
+| --- | --- |
+| Site, D1 and plugin | Native Sites tooling can create a private Site, prepare storage and publish its canonical App/plugin. Follow current host skill/schema; reuse returned identities. A repository skill is not automatically bundled into that plugin. |
+| Owner and callback configuration | Derive ownership from a real authenticated MCP call. Derive a callback candidate from a genuine subscription, then independently verify its origin before trusting it. The user need not invent either. |
+| Runtime secrets | Native Sites controls store secrets. Plaintext tool arguments marked secret do not provide protected user entry. Use a protected handle/UI; otherwise the owner must enter the token directly in native Sites settings. |
+| Independent webhook secret | Generate and assign without exposing it through a supported native path. If unavailable, the owner must generate and enter it securely; this is an extra manual host limitation. |
+| Subscription and policy | Use the genuine event service and exactly one task. Preserve all triggers when updating. Callback acceptance does not prove the task ran or retained context. |
+| Bot preflight and registration | `configure_telegram_webhook({})` combines bot identity/webhook checks and guarded registration. There is no separate read-only MCP bot inspection tool. A conflicting webhook is refused; an uncertain outcome needs secret-safe inspection before retrying. |
+| Human interaction | Host sign-ins, installation/connection approval, dedicated-bot creation, protected secret entry, Telegram Start and a real message may require the owner. |
+
+The [checkpoint helper](../scripts/plan-setup.mjs) is a local, enum-only decision
+aid with no mutations, host inspection or persisted state. Its `verified` result
+means supplied observations meet the checklist; it does not independently certify
+a deployment. Missing capabilities must remain pending/blocked with an exact next
+step. The skill does not promise an unattended two-input installation on every host.
+
+## Owner-led clean-install test
+
+The owner may choose to remove an old Site/plugin and test a fresh setup. This is
+not authorization for an agent to delete them, change the live bot, or create a
+replacement responder. Before deletion, securely preserve the dedicated bot token
+in the owner's secret manager, private configuration and installation/task
+references, and any required D1 backup under private access controls. Reconcile
+pending deliveries and uncertain outgoing operations; a new database loses old
+idempotency records, and a backup can contain message text and signing credentials.
+Never copy backups, filled prompts or operational values into this repository.
+
+Deleting a Site/plugin does not establish that an automation was disabled or that
+Telegram's webhook was removed. Inventory stale task/connector references before
+creating a replacement. Resolve each exact stale responder with owner approval.
+For the same bot, the old webhook may block registration: use an explicitly approved
+migration, or preferably select a new dedicated bot. Reuse requires the owner to
+perform [`deleteWebhook`](https://core.telegram.org/bots/api#deletewebhook), preserving
+pending updates, through a trusted secret-safe management path. The connector does
+not expose deletion; without that path, use a new bot. Do not
+force replacement or drop queued messages to make a test pass.
+
+On the new Site, obtain its new Site-scoped owner identity, regenerate the independent
+webhook secret securely, re-derive the genuine callback origin, and repeat hosted
+acceptance while credentials are absent. Use a fresh normal-chat activation instant
+so old queued Telegram messages cannot trigger backfilled replies. Never replay an
+old or uncertain send under a new key merely because the database was replaced.
+Then verify exactly one canonical plugin and enabled responder, one authenticated
+subscription, Start/new text/follow-up behavior, and a read-only re-run of setup
+that creates no extra resources, changes no secrets and sends no extra test message.
+
 ## Configuration boundaries
 
 The public repository contains source, synthetic tests, and `.openai/hosting.example.json`. It must never contain real owner or Telegram IDs, personal assistant names, bot tokens, webhook secrets, callback URLs, subscription keys, message contents, instance URLs, or deployment IDs.
