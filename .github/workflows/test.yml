@@ -1,0 +1,25 @@
+name: Test and validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Run tests
+        run: npm test
+      - name: Build Worker
+        run: npm run build
+      - name: Validate deployment artifact
+        run: npm run validate

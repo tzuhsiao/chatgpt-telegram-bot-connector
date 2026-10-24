@@ -1,0 +1,11 @@
+node_modules/
+dist/
+outputs/
+.env
+.env.*
+!.env.example
+.dev.vars*
+.openai/hosting.json
+.superpowers/
+.wrangler/
+*.log

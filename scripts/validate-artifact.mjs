@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const source = await readFile(new URL('../dist/server/index.js',import.meta.url),'utf8');
+const config = JSON.parse(await readFile(new URL('../dist/.openai/hosting.json',import.meta.url),'utf8'));
+assert.equal(config.d1,'DB');
+assert.ok(config.capabilities.includes('mcp'));
+const module = await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+assert.equal(typeof module.default?.fetch,'function');
+const response = await module.default.fetch(new Request('https://connector.example/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:1,method:'server/discover'})}),{});
+assert.deepEqual((await response.json()).result.supportedVersions,['2026-07-28']);
+console.log('Artifact is valid ESM with working MCP discovery.');
