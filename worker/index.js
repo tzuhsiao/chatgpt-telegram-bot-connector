@@ -41,6 +41,29 @@ async function readJson(request, limit = MAX_BODY) {
 
 function callerId(request) { return request.headers.get('oai-authenticated-user-id') || null; }
 
+// Disabled by default. Log event RPC shapes and error categories without
+// persisting callback URLs, filters, identities, or signing credentials.
+function eventDiagnostic(env, method, phase, request, params, error) {
+  if(env.MCP_DIAGNOSTICS!=='1') return;
+  if(method!=='events/subscribe' && method!=='events/unsubscribe' && method!=='unparsed') return;
+  const shape=params && typeof params==='object' && !Array.isArray(params)?params:{};
+  const args=shape.arguments && typeof shape.arguments==='object' && !Array.isArray(shape.arguments)?shape.arguments:{};
+  const delivery=shape.delivery && typeof shape.delivery==='object' && !Array.isArray(shape.delivery)?shape.delivery:{};
+  const known=error instanceof AppError;
+  const permittedTopLevelKeys=['name','arguments','delivery','ttlMs','cursor','_meta'];
+  console.info('mcp_event_diagnostic',JSON.stringify({
+    method,phase,hasCaller:!!callerId(request),paramCount:Object.keys(shape).length,
+    unexpectedTopLevelKeys:Object.keys(shape).filter(key=>!permittedTopLevelKeys.includes(key)),
+    hasName:typeof shape.name==='string',hasArguments:shape.arguments!==undefined,
+    hasChatId:typeof args.chat_id==='string',hasDelivery:shape.delivery!==undefined,
+    deliveryMode:delivery.mode==='webhook'?'webhook':'other',
+    hasCallbackUrl:typeof delivery.url==='string',hasSigningSecret:typeof delivery.secret==='string',
+    hasTtlMs:shape.ttlMs!==undefined,hasCursor:shape.cursor!==undefined,
+    ...(error?{httpStatus:known?error.status:500,rpcCode:known?error.code:-32603,
+      errorCategory:known?error.message:'unexpected_error'}:{}),
+  }));
+}
+
 function requireOwner(request, env) {
   const id = callerId(request);
   if (!id) throw new AppError('Authentication required.',401,-32001);
@@ -143,7 +166,8 @@ const EVENT_DEFINITION = {
 };
 
 async function eventOperation(method,params,owner,env,runtime) {
-  objectArgs(params,['name','arguments','delivery','ttlMs','cursor'],['name','arguments','delivery']);
+  objectArgs(params,['name','arguments','delivery','ttlMs','cursor','_meta'],['name','arguments','delivery']);
+  if(params._meta!==undefined && (!params._meta || typeof params._meta!=='object' || Array.isArray(params._meta))) throw new AppError('Invalid arguments.');
   if(params.name!==EVENT) throw new AppError('Unknown event.');
   objectArgs(params.arguments,['chat_id'],['chat_id']);
   const chat=requireChat(params.arguments.chat_id,env);
@@ -425,12 +449,17 @@ const TOOLS = [
 
 async function mcp(request, env, runtime) {
   let id = null;
+  let diagnosticMethod = 'unparsed';
+  let diagnosticParams = {};
   try {
     const body = await readJson(request);
     if (!body || Array.isArray(body) || body.jsonrpc !== '2.0' || typeof body.method !== 'string') throw new AppError('Invalid JSON-RPC request.',400,-32600);
     if (body.id !== undefined && body.id !== null && typeof body.id !== 'string' && !(typeof body.id === 'number' && Number.isFinite(body.id))) throw new AppError('Invalid request ID.',400,-32600);
     id = body.id ?? null;
     const {method,params = {}} = body;
+    diagnosticMethod=method;
+    diagnosticParams=params;
+    eventDiagnostic(env,method,'received',request,params);
     let result;
     if (method === 'server/discover') result = {resultType:'complete',supportedVersions:[PROTOCOL],capabilities:{tools:{},events:{}}};
     else if (method === 'tools/list') result = {tools:TOOLS};
@@ -447,6 +476,7 @@ async function mcp(request, env, runtime) {
     return json({jsonrpc:'2.0',id,result});
   } catch (error) {
     const known = error instanceof AppError;
+    eventDiagnostic(env,diagnosticMethod,'rejected',request,diagnosticParams,error);
     return json({jsonrpc:'2.0',id,error:{code:known?error.code:-32603,message:known?error.message:'Internal error.',...(known && error.reason?{data:{reason:error.reason}}:{})}},known?error.status:500);
   }
 }
