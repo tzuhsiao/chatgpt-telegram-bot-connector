@@ -163,10 +163,21 @@ secrets, poll `getUpdates`, expose tokens in Bot API URLs or send unsolicited te
 
 Configure [normal private conversation](../../../docs/normal-chat.md) using
 [the prompt](../../../prompts/private-chat.md) on the one existing task. Obtain
-authorization for automatic replies to the exact chat and any bounded history
-reads. Preserve its trigger, stable per-message/per-part operation keys and
+authorization for discretionary relevant responses to the exact chat and any bounded
+history reads. The connector notifies and provides tools; it does not require a
+reply to every event or one reply per message. Normal sends omit `reply_to_message_id`.
+The Dot may answer several already-arrived messages coherently, acknowledge with
+brief/emoji-only text, or stay silent while retaining unresolved substantive requests.
+There is no reaction tool in this connector; do not claim text emoji are reactions.
+Other reaction tools need actual availability and separate authorization.
+Preserve its trigger, frozen per-plan/per-part operation keys, coverage and
 uncertain-send handling. Use a fresh activation instant for a fresh installation;
-do not backfill earlier messages. Store the filled prompt privately.
+do not backfill earlier messages. Reconcile legacy quoted/per-message plans under
+their original arguments before a v3 cutover; do not regroup uncertain sends or
+discard unresolved earlier requests. Follow the guide's deterministic included
+anchor and authoritative private coverage checks, with no timer/polling/batch wait.
+The template adds no shared-state service or durable model queue. Store the filled
+prompt privately.
 
 Prefer one consented welcome when supported. Follow
 [the one-time welcome procedure](../../../docs/operations.md#one-time-setup-welcome):
