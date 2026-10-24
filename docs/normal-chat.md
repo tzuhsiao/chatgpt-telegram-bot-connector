@@ -26,7 +26,7 @@ Never commit a filled prompt, real IDs, message text, deployment metadata, or cr
 
 - Actual event fields identify the incoming message. History is context only, not a source for inventing the current event.
 - Activation uses message time. Telegram can choose a random `update_id` after at least a week without updates, so a permanent numeric lower bound can stop valid future messages. See the [Telegram Update definition](https://core.telegram.org/bots/api#update).
-- Ordinary replies use plain text, the actual incoming reply target, and keys `tg-chat:v1:<update_id>:<part>` with one-based parts.
+- Ordinary replies use plain text, the actual incoming reply target, and keys `tg-chat:v2:<chat_id>:<message_id>:<part>` with one-based parts. The [Telegram Message definition](https://core.telegram.org/bots/api#message) identifies a message ID as unique within its chat; combining both fields avoids a collision caused by a reset update ID.
 - A reply has at most four parts of 3,000 Unicode code points each. Count labels and separators, freeze the plan before sending, and send in order. Longer requests receive a useful summary and an invitation to continue.
 - Only a successful preceding part allows the next part to send. A failure, in-progress/uncertain state, or conflict stops the remaining parts and is surfaced to the owner without an automatic retry or new key.
 - Process all distinct supplied events. The template does not provide a durable model-side work queue or a cross-run transcript; host execution must be tested rather than inferred from webhook callback acceptance.
@@ -51,6 +51,8 @@ Record actual observed results privately. Use synthetic data for public examples
 Run `npm test`, `npm run build`, and `npm run validate` for transport regression coverage. Local tests cover the Worker contract; they do not prove that the host loaded the prompt, retained conversation context, or completed an inference run. Keep those results distinct from real-message observations.
 
 ## Recovery and further changes
+
+Treat a key-format change as an operation-identity migration. Before updating an existing task, finish active replies and explicitly reconcile unresolved operations, retaining their original keys and frozen arguments. Choose a new activation instant for the new policy and use its key format only for new eligible messages. Do not replay a pre-cutover message under a different namespace; changing keys does not make a prior uncertain send safe to retry.
 
 If the task stops before replying, first distinguish pending connector delivery from an already accepted callback whose model run did not complete. The pending-event recovery tool covers the former; it is not a general replay mechanism for completed callback deliveries. Inspect the task and actual send state before authorizing recovery.
 
