@@ -3,12 +3,30 @@ name: telegram-setup
 description: Use when a user asks a Dot or agent to install or resume this repository's personal Telegram Bot, including fresh setup after deleting a prior Site or plugin.
 ---
 
-# Set up Telegram Bot
+# Set up Telegram Bot Connector
 
 Read [AGENTS.md](../../../AGENTS.md) and [operations](../../../docs/operations.md).
 Review source safety before installation. This workflow runs in the owner's host;
 repository tests are not an installation. Report one next checkpoint at a time,
 with observed status, required approval/interaction, and exact blockers.
+
+## 0. Explain before installing
+
+Tell the owner in plain language: "This puts a small bridge in your own ChatGPT
+Sites account. Telegram sends it a notification when you message your bot, and
+the bridge lets your dot receive the message and reply there. It runs on Sites,
+so your computer does not need to stay on. The Site hosts the bridge and storage;
+the plugin gives your dot the tools to use it."
+
+Explain that incoming text/IDs, subscriptions and delivery records live in the
+storage attached to their Site, not a separate server operated by this repository's
+author. Inbox records expire after seven days; outgoing operation metadata after
+thirty days. Physical cleanup happens with activity and may occur later; other
+state is not promised those windows. The outgoing operation log is not a complete
+reply transcript. Telegram and ChatGPT may retain their own records separately.
+Link the [retention details](../../../docs/operations.md#retention-privacy-and-maintenance).
+Include the optional one-message welcome to the confirmed private chat in setup
+consent; resolve its exact recipient and consent before any send.
 
 ## 1. Reconcile, then install the Site and plugin
 
@@ -28,7 +46,7 @@ bot credentials yet.
   incomplete checkpoint. Do not redeploy, change settings, renew/unsubscribe,
   register webhooks or send tests merely because setup was invoked again.
 - **Fresh:** only after a complete inventory proves no reusable match, create one
-  owner-private Site named **Telegram Bot**, with `DB` D1 and `mcp`
+  owner-private Site titled **Telegram Bot Connector**, with `DB` D1 and `mcp`
   capability. Persist its returned ID atomically in the private Site source before
   further operations. Build, push, save and privately deploy through supported Sites
   tooling; install the repository migration journal through the supported D1 workflow.
@@ -46,8 +64,14 @@ bot credentials yet.
 
 Sites publication provisions the canonical personal App/plugin. Retrieve it with
 `get_site(include_mcp_connection: true)` using the actual tool schema. Reuse that
-plugin; do not call `create_plugin` for it. Use **Telegram Bot** for display
-names, preserving stable IDs. Offer the returned plugin's install/connect UI. If
+plugin; do not call `create_plugin` for it. Use **Telegram Bot** for its display
+name, preserving stable IDs. The new Site title is **Telegram Bot Connector**.
+Use native Site title controls and supported canonical-plugin display metadata/UI,
+after inspecting current schemas. Do not assume changing one name changes the
+other, or rename an internal package/connector ID to change a display label. If
+the host cannot set separate names, report the specific verified limitation and
+actual names; retain the canonical plugin. Do not silently rename existing setups.
+Offer the returned plugin's install/connect UI. If
 already installed but tools are absent, wait briefly, reconnect or request a new
 chat; do not create a duplicate to refresh tools. Confirm a real read-only MCP call.
 
@@ -144,11 +168,46 @@ reads. Preserve its trigger, stable per-message/per-part operation keys and
 uncertain-send handling. Use a fresh activation instant for a fresh installation;
 do not backfill earlier messages. Store the filled prompt privately.
 
-Have the owner Start the bot and send new ordinary text, then a follow-up. Verify
-actual event receipt and the authorized reply in Telegram, accounting for every
-distinct delivered event and duplicate responders. Report local tests, deployment,
-callback acceptance, model execution and live round trip separately. Unobserved
-live behavior remains pending.
+Prefer one consented welcome when supported. Follow
+[the one-time welcome procedure](../../../docs/operations.md#one-time-setup-welcome):
+verify the exact allowlisted private recipient, explicit one-message consent,
+confirmed ability to reach that bot chat, and a durable private record containing
+the frozen request and stable `tg-setup:v1:welcome:<chat_id>` key before dispatch.
+The record must outlive the thirty-day outgoing-operation window. Missing or lost
+history on resume is not evidence that the welcome was never sent. With no durable
+record facility, skip it. The facility must survive sessions/agents, restarts and
+redeployments, provide authoritative read-before-write plus one writer/reservation,
+and retain terminal markers for the installation's lifetime. Chat/model memory or
+the expiring outgoing table is insufficient. A ready record on an existing setup
+must be the original durable record, never reconstructed from missing history.
+Do not add a new bot API/probe or weaken allowlists.
+
+If the owner has not opened this bot and started/messaged it, or reachability is
+unknown, ask them to open it and press Start/send text instead of guessing that
+the bot can initiate contact. If sending is unavailable or declined, use that same
+fallback. A failed welcome is not automatically resent after Start. On sending,
+uncertain or conflicting state, stop for private reconciliation; never change the
+key or frozen arguments to bypass the result. Sent/completed setup does not welcome
+again, including after operation-record expiry.
+
+Make fallback final: persist `skipped` before asking the owner to Start/message.
+The helper's `recordWelcomeAs: skipped` output is a requested transition, not proof
+it was saved. After Start, keep skipped even when reachability becomes confirmed;
+the ordinary responder may already answer Start. Preserve existing failed/uncertain
+evidence. If durable storage is unavailable, keep welcome unsupported on resume;
+missing history cannot prove that no earlier fallback or dispatch occurred.
+
+Reconcile only through the owner's actual chat and private record. `send_message`
+is a mutation, never a read-only status lookup: a missing/expired row or replaced
+database may send again under the same key. No read-only MCP operation-key lookup
+exists. If the outcome cannot be established, retain uncertain and stop.
+
+Record welcome/outbound sending separately from incoming acceptance. Successful
+send means Telegram accepted the outbound message; it proves neither receipt by
+the person nor the incoming callback/model path. Ask the owner to reply to the
+welcome (or send new text for fallback) and a follow-up, then verify actual events
+and authorized replies. Report deployment, outbound result, callback acceptance,
+model execution and the conversation loop separately; unobserved checks stay pending.
 
 ## Resume helper
 
@@ -181,6 +240,9 @@ artifacts, without secrets. Re-read actual resources on resume; saved state is a
 | `webhook`, `policy` | Webhook: `unknown`, `absent`, `ours`, `other`; policy: `missing`, `ready`, `conflict`. |
 | `verification`, `operation`, `secretEntry` | Verification: `pending`, `passed` (observed round trip); operation: `idle`, `uncertain`; secret entry: `unavailable`, `native`. |
 | `secretGeneration` | `native` for verified secret-safe generation/assignment; `manual` when the owner must generate and enter the webhook secret through native controls. |
+| `welcomeRecord` | `ready` only for the original durable private record with no prior dispatch/fallback and frozen key/request; `sending`, `sent`, `failed`, `uncertain`, `unavailable`, `skipped` (terminal fallback, even after Start). Unknown history never proves unsent. |
+| `welcomeConsent` | `granted` for one welcome to the exact confirmed private chat; `declined`; missing consent is `unknown`. |
+| `welcomeReachability` | `confirmed` from trusted chat-start evidence; `needs_start`, `unavailable`; `unknown` never permits a probe-send. |
 
 End with the verified checkpoint, completed observations, next exact action/target
 and responsible actor, needed approval/interaction, and any action denied, pending

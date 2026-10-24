@@ -5,7 +5,22 @@ This guide covers the single-owner, dedicated-bot MVP. It uses ChatGPT Sites, a 
 For agent-driven installation, start with [AGENTS.md](../AGENTS.md) and the
 [setup skill](../.agents/skills/telegram-setup/SKILL.md). Install/reuse the Site and
 its canonical plugin first, then guide the two intended owner inputs. Use
-**Telegram Bot** for product display names while retaining stable IDs.
+**Telegram Bot Connector** for the new Site title and **Telegram Bot** for the
+canonical plugin display name. The Site hosts the bridge/storage; the plugin gives
+the dot its tools. Use supported native naming controls and verify both results.
+If separate naming is unsupported, report the actual names and exact observed
+limitation. Preserve stable IDs and never silently rename an existing installation.
+The bundled landing page uses the generic Site label on a future deployment;
+updating its title/brand does not rename hosted Site/plugin metadata. Report any
+pre-existing label difference; this documentation change does not deploy or rename it.
+
+Before installing, explain that this is a small bridge running in the owner's
+ChatGPT Sites account. Telegram sends it message notifications; it passes accepted
+private text to the dot and exposes authorized reply tools. The owner's computer
+need not stay on for the bridge. Connector records live in storage attached to
+their Site, not on a separate server operated by this repository's author.
+Explain the [actual retention](#retention-privacy-and-maintenance) and distinguish
+it from Telegram and ChatGPT's own records before requesting setup consent.
 
 ## Setup capabilities and limits
 
@@ -89,7 +104,7 @@ For an accepted private message, the sender ID and chat ID must match and appear
 8. Complete the hosted acceptance gates below before registering a Telegram webhook. The webhook remains disabled during these tests.
 9. Create or select a dedicated Telegram bot, then enter its token and an independently generated webhook secret through the native controls. Do not paste either credential into chat, shell history, a public URL, or a source file.
 10. Call `configure_telegram_webhook` with `{}`. This registers the fixed `/telegram/webhook` endpoint under `SITE_ORIGIN`; it is not an arbitrary Bot API or URL forwarding tool.
-11. Send one private text message from an allowlisted Telegram user in an allowlisted private chat. Confirm event receipt, read the stored message through MCP, and send an explicitly authorized reply with a new stable operation key.
+11. Follow the [one-time welcome procedure](#one-time-setup-welcome) when sending is supported and consented. Otherwise have the owner Start/message the bot. Separately confirm incoming event receipt, the stored message and an authorized reply; welcome success alone does not complete this check.
 
 Registering a webhook changes the dedicated bot's Telegram delivery destination. The tool refuses a bot with a different existing webhook; it does not have an override argument. If moving a bot is intentional, explicitly remove the old integration through the bot's supported management workflow before configuring this connector. Otherwise use a new dedicated bot.
 
@@ -126,13 +141,95 @@ After both preceding gates pass:
 
 1. Configure the dedicated bot token, independent webhook secret, explicit sender IDs, and private chat IDs.
 2. Register the webhook with `configure_telegram_webhook({})`.
-3. Send a private text message from an approved sender/chat pair.
+3. Prefer the consented [one-time welcome](#one-time-setup-welcome), recording outbound acceptance separately. Ask the owner to reply to it; if unavailable, have the owner Start/message the bot.
 4. Confirm the message is persisted and a signed MCP event reaches the active ChatGPT subscription.
 5. Read the accepted message with `get_recent_messages` and reply using `send_message` with a new `idempotency_key`.
 6. Repeat that exact send call with the same key and request. Confirm the recorded result is returned without initiating another bot send.
 7. Send a second message and verify the intended conversation behavior. Check that disallowed senders/chats, non-private chats, and unsupported updates cannot trigger an event or reply.
 
 Do not claim a live round trip passed solely because local tests passed or the Site deployed successfully. A dedicated bot token and an actual approved private chat are required; neither is included in this repository.
+
+## One-time setup welcome
+
+Offer this in setup consent: "After the connection checks pass, may I send one
+brief welcome from your bot to your confirmed private Telegram chat?" Resolve the
+exact recipient privately before treating consent as granted. Installation or
+automatic-reply permission alone is not consent for this proactive message.
+
+After owner identity, both matching allowlists, bot/webhook, hosted gates and the
+single responder policy are verified, prefer one welcome **only** when supported:
+
+1. Confirm this exact bot can contact that exact private chat, for example from the
+   owner's confirmation that they already started/messaged it. Telegram
+   [bots cannot initiate a conversation with a new user](https://core.telegram.org/bots#how-are-bots-different-from-users).
+   A numeric ID, valid token or successful webhook registration does not establish
+   chat reachability. If unknown, not started, blocked, unsupported or declined,
+   skip the welcome and ask the owner to open the bot and press Start/send text.
+   Choosing this fallback is terminal: persist `skipped` before prompting. Later
+   confirmation that Start succeeded must not enable a delayed welcome alongside
+   the normal responder's reply. Keep prior failed/uncertain dispatch evidence.
+2. Inspect the durable private setup record for this Site/bot/chat. Use the fixed
+   key `tg-setup:v1:welcome:<chat_id>` within this deployment's database; never add a
+   timestamp, random suffix or new namespace on resume. The real ID belongs only in
+   private configuration/tool arguments, not public examples.
+3. Only a proven fresh installation with no prior dispatch **or fallback** may
+   initialize that record as ready. An existing installation can reuse ready only
+   from the original authoritative record, never by inferring it from absent logs.
+   Freeze the full request (recipient, brief text, key, no reply
+   target), and persist the intent before sending. Example text: "Your dot is
+   connected. Reply here to check that your messages reach it." Localize once
+   before freezing, not again on retries. Use a single setup writer or supported
+   native reservation; if durable record storage/coordination is unavailable, use
+   Start/message instead. This advisory helper does not supply that storage.
+   A qualifying native private facility survives new sessions/agents, restarts
+   and redeployments, supports authoritative read-before-write and a single writer
+   or reservation, and retains terminal markers for the installation's lifetime.
+   Chat history/model memory and the expiring `outgoing` table do not qualify.
+4. Re-read the record, mark dispatch attempted/sending durably before the call,
+   then invoke `send_message` once with the frozen request. Keep the operation key
+   and frozen request as evidence during private reconciliation. If persisting the intent fails
+   or its outcome is uncertain, do not send. An interrupted run with a sending
+   record is uncertain even if it may have stopped before the network call.
+5. On `sent` (including `reused: true`), retain a sent marker and Telegram message
+   ID. Do not send another welcome on setup resume or after a lost acknowledgement.
+   A sending/uncertain/conflicting outcome requires private reconciliation; do not
+   automatically retry or change keys. A failed welcome falls back to Start/text;
+   Start does not authorize retrying that failed welcome under a new key.
+
+Never call `send_message` to look up an operation's status. It can perform a new
+send when its row is absent (before an interrupted insert, after retention cleanup
+or database replacement). There is no read-only MCP lookup by operation key.
+Reconcile a sending/uncertain welcome through the owner checking the actual chat
+and the native private record; incoming-message history is not outgoing evidence.
+A same-key repeat is protected only while the matching Worker record is known to
+remain; it is not a general status probe. If the outcome cannot be established,
+keep it uncertain and stop instead of making another call.
+
+Keep the setup record for the installation's lifetime in native private storage,
+outside public source and diagnostics. Never reset an attempted/sent record to
+ready. The Worker's outgoing operation records expire after thirty days: that
+window alone cannot suppress a welcome forever. If the setup record is lost,
+expired, unavailable or conflicts with retained operation state, skip sending
+and reconcile privately/use Start/message. A new database is not proof of a new
+send authorization; distinguish deliberate fresh installation from recovery.
+When no durable facility exists to retain a skipped marker, keep welcome unsupported
+on resume: absence of history cannot prove that no fallback was chosen. Do not
+later initialize a ready record merely because storage/reachability became available.
+
+Report **outbound welcome**, **incoming callback**, **model execution** and **full
+conversation** separately. A `sent` result only shows Telegram accepted the
+outbound request; it does not show the person read it or that incoming notifications
+work. Have the owner reply to the welcome (or send new text for fallback), observe
+the real incoming event and authorized answer, then verify a follow-up. Re-running
+an already accepted setup is read-only and does not repeat welcome/test messages.
+
+| Setup acceptance case | Expected result |
+| --- | --- |
+| Fresh, consented, reachable, durable ready record | One frozen welcome request with the stable key. Incoming verification remains pending. |
+| Chat not started/reachability unknown, no send capability, no consent or no durable record facility | No probe-send; terminal skipped Start/message fallback, with no delayed welcome after Start. |
+| Re-run, including after thirty-day operation expiry | Existing attempted/sent history prevents another welcome; lost history does not count as unsent. |
+| Failed, in-flight or uncertain welcome | No new key or automatic resend. Reconcile uncertainty privately; use fallback for a definite failure. |
+| Successful welcome without an incoming reply/event | Outbound accepted only; do not claim callbacks, inference or conversation passed. |
 
 ## Receiving and recovering events
 
@@ -175,6 +272,14 @@ For an uncertain operation, inspect the destination chat privately and reconcile
 ## Retention, privacy, and maintenance
 
 Persisted data includes message text and identifiers, subscription state and signing credentials, delivery attempts/state, and outgoing operation records. Restrict database access and review retention before production use. Backups may retain the same sensitive data after the live records are removed.
+
+These connector records are in D1 storage attached to the owner's Site. Bot and
+webhook secrets stay in native Sites runtime configuration. Outgoing records store
+request hashes, recipient/message IDs, states and error categories, not a complete
+archive of reply text. Any private setup welcome journal is separate from this
+thirty-day log and must retain its attempted/sent marker for the installation's
+lifetime. Telegram and ChatGPT can retain their own service records separately;
+these connector windows do not describe or erase those records.
 
 All inbox records, including pending and failed events, expire seven days after `received_at`. Outgoing operation records/tombstones expire thirty days after `created_at`, not after their last retry or update. Read-only status and message tools exclude expired records logically; they do not delete them. Once an incoming record expires, neither history reads nor manual recovery can use it.
 

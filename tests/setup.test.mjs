@@ -117,6 +117,52 @@ test('planner accepts only enum observations and never echoes rejected secret-li
   const evidence={...complete}; planSetup(evidence); assert.deepEqual(evidence,complete);
 });
 
+const welcomeReady = {...complete,installation:'fresh',verification:'pending',
+  welcomeRecord:'ready',welcomeConsent:'granted',welcomeReachability:'confirmed'};
+
+test('welcome planning needs durable frozen state, exact-chat consent and confirmed reachability',()=>{
+  assert.equal(planSetup(welcomeReady).checkpoint,'welcome_send');
+  assert.equal(planSetup({...welcomeReady,welcomeConsent:'unknown'}).checkpoint,'welcome_consent');
+  for(const welcomeReachability of ['unknown','needs_start','unavailable']) {
+    assert.equal(planSetup({...welcomeReady,welcomeReachability}).checkpoint,'round_trip');
+  }
+  assert.equal(planSetup({...welcomeReady,welcomeConsent:'declined'}).checkpoint,'round_trip');
+  assert.equal(planSetup({...welcomeReady,welcomeRecord:'unknown'}).checkpoint,'inspect_welcome');
+  assert.equal(planSetup({...welcomeReady,welcomeRecord:'unavailable'}).checkpoint,'round_trip');
+  assert.equal(planSetup({...welcomeReady,installation:'existing',welcomeRecord:'unknown'}).checkpoint,'round_trip');
+});
+
+test('welcome success is not incoming verification and repeated setup never welcomes again',()=>{
+  const sent=planSetup({...welcomeReady,welcomeRecord:'sent'});
+  assert.equal(sent.checkpoint,'round_trip');
+  assert.notEqual(sent.status,'verified');
+  assert.equal(planSetup({...welcomeReady,verification:'passed'}).checkpoint,'complete');
+  assert.equal(planSetup({...complete,welcomeRecord:'sent'}).checkpoint,'complete');
+});
+
+test('welcome failure does not retry; in-flight and uncertain welcome require reconciliation',()=>{
+  assert.equal(planSetup({...welcomeReady,welcomeRecord:'failed'}).checkpoint,'round_trip');
+  for(const welcomeRecord of ['sending','uncertain']) {
+    const result=planSetup({...welcomeReady,welcomeRecord});
+    assert.equal(result.checkpoint,'welcome_review');
+    assert.equal(result.status,'blocked');
+  }
+  assert.equal(planSetup({...welcomeReady,owner:'mismatch'}).checkpoint,'owner_conflict');
+  assert.equal(planSetup({...welcomeReady,allowlists:'conflict'}).checkpoint,'allowlists');
+  assert.equal(planSetup({...welcomeReady,operation:'uncertain'}).checkpoint,'reconcile_operation');
+});
+
+test('choosing Start fallback permanently skips welcome even after reachability becomes confirmed',()=>{
+  const fallback=planSetup({...welcomeReady,welcomeReachability:'needs_start'});
+  assert.equal(fallback.checkpoint,'round_trip');
+  assert.equal(fallback.recordWelcomeAs,'skipped');
+  const resumed=planSetup({...welcomeReady,welcomeRecord:fallback.recordWelcomeAs});
+  assert.equal(resumed.checkpoint,'round_trip');
+  assert.notEqual(resumed.checkpoint,'welcome_send');
+  assert.equal(planSetup({...welcomeReady,installation:'existing'}).checkpoint,'welcome_send');
+  assert.equal(planSetup({...welcomeReady,installation:'existing',welcomeRecord:'unknown'}).recordWelcomeAs,'skipped');
+});
+
 test('CLI reads observations from stdin and redacts malformed, oversized or unexpected input',()=>{
   const run=input=>spawnSync(process.execPath,['scripts/plan-setup.mjs'],{input,encoding:'utf8'});
   const ok=run(JSON.stringify(complete));

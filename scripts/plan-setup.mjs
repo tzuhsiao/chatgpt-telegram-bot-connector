@@ -14,10 +14,14 @@ const fields = {
   webhook:['unknown','absent','ours','other'],policy:['unknown','missing','ready','conflict'],
   verification:['unknown','pending','passed'],operation:['unknown','idle','uncertain'],
   secretEntry:['unknown','unavailable','native'],secretGeneration:['unknown','native','manual'],
+  welcomeRecord:['unknown','ready','sending','sent','failed','uncertain','unavailable','skipped'],
+  welcomeConsent:['unknown','granted','declined'],
+  welcomeReachability:['unknown','confirmed','needs_start','unavailable'],
 };
 const invalid = 'Invalid setup evidence. Use only documented enum observations.';
 const next = (status,checkpoint,reason)=>({status,checkpoint,reason});
 const gap = reason=>next('blocked','verification_gap',reason+' Use read-only checks; do not run lifecycle tests or re-register a live webhook.');
+const welcomeFallback = reason=>({...next('user_required','round_trip',reason+' Permanently record welcome skipped before asking the owner to Start/send text; later reachability must not enable a late welcome.'),recordWelcomeAs:'skipped'});
 
 export function planSetup(evidence = {}) {
   if(!evidence || typeof evidence!=='object' || Array.isArray(evidence) ||
@@ -78,8 +82,20 @@ export function planSetup(evidence = {}) {
   }
   if(e.policy==='unknown') return next('action_required','inspect_policy','Read the existing single task policy and authorization without changing it.');
   if(e.policy==='missing') return next('approval_required','policy','Configure the existing responder with normal-chat policy and explicit reply authorization.');
+  if(['sending','uncertain'].includes(e.welcomeRecord)) return next('blocked','welcome_review','Reconcile through the owner actual chat and private record, never a send_message status probe. Do not resend automatically, change frozen arguments or use a new key.');
   if(e.verification==='unknown' && e.installation==='existing') return gap('Real-message acceptance has not been observed or recorded.');
-  if(e.verification!=='passed') return next('user_required','round_trip','Obtain approval for real-message acceptance; have the owner Start the bot and send new private text, then verify event and authorized reply.');
+  if(e.verification!=='passed') {
+    if(e.welcomeRecord==='sent') return next('user_required','round_trip','Welcome sending succeeded; incoming callbacks and conversation remain unverified. Ask the owner to reply and verify the actual event and authorized answer.');
+    if(['failed','skipped'].includes(e.welcomeRecord)) return next('user_required','round_trip','Keep the terminal failed/skipped welcome record; never resend after Start. Verify the owner incoming message and authorized reply.');
+    if(e.welcomeConsent==='declined'||e.welcomeRecord==='unavailable') return welcomeFallback('Welcome sending is declined or its durable record facility is unavailable.');
+    if(e.welcomeRecord==='unknown') {
+      if(e.installation==='existing') return welcomeFallback('Welcome history is unknown; avoid another send.');
+      return next('action_required','inspect_welcome','Inspect durable welcome history. Prepare a frozen request only with proof of a fresh installation and no prior dispatch or fallback; otherwise skip and use Start/message.');
+    }
+    if(e.welcomeReachability!=='confirmed') return welcomeFallback('Bot reachability is unverified or sending is unavailable; do not probe-send.');
+    if(e.welcomeConsent!=='granted') return next('approval_required','welcome_consent','Obtain consent for one brief welcome to the exact confirmed allowlisted private chat.');
+    return next('action_required','welcome_send','Use the approved frozen welcome request once with its stable key and durable private record. Outbound success does not verify incoming events.');
+  }
   return next('verified','complete','Required observations were supplied. Report hosted and real-message evidence separately from local tests.');
 }
 
