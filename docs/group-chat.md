@@ -14,7 +14,7 @@ messages or remain silent. No per-message reply or quote is required.
    and for this exact group and **each** of its two human participants, including
    group history reads and intended sends. Obtain their informed agreement to
    forwarding accepted shared text to the owner's dot. Keep real IDs private.
-2. The owner configures a private, non-forum group/supergroup containing only those
+2. The owner configures a private group/supergroup containing only those
    two humans and this bot. No public usernames, linked channel, location or
    community association are supported. Disable ordinary members' invitation
    permission, revoke unnecessary invite links, review join approval and visible
@@ -159,6 +159,7 @@ limit before activation. No scheduled polling or automatic moderation is supplie
 - [Privacy mode](https://core.telegram.org/bots/features#privacy-mode): admins receive ordinary group messages; changing global privacy settings is unnecessary here.
 - [ChatFullInfo](https://core.telegram.org/bots/api#chatfullinfo) and [ChatPermissions](https://core.telegram.org/bots/api#chatpermissions): public/linked chat metadata, invitations and visible history require deliberate review.
 
-Forum topics, private-thread mode (issue #15), media and automatic moderation are
-outside this feature. Tests simulate Telegram responses with synthetic identifiers;
+Forum supergroups use [explicit topic routing and retained history](group-topics.md).
+Private-thread mode (issue #15), media and automatic moderation remain outside this
+feature. Tests simulate Telegram responses with synthetic identifiers;
 they do not certify real group settings, host identity or a live round trip.

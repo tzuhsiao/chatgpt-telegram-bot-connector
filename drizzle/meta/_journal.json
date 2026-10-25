@@ -4,6 +4,7 @@
   "entries": [
     { "idx": 0, "version": "6", "when": 1792713600000, "tag": "0000_connector", "breakpoints": true },
     { "idx": 1, "version": "6", "when": 1792713601000, "tag": "0001_subscription_revision", "breakpoints": true },
-    { "idx": 2, "version": "6", "when": 1792886400000, "tag": "0002_group_access", "breakpoints": true }
+    { "idx": 2, "version": "6", "when": 1792886400000, "tag": "0002_group_access", "breakpoints": true },
+    { "idx": 3, "version": "6", "when": 1792886401000, "tag": "0003_group_topics", "breakpoints": true }
   ]
 }

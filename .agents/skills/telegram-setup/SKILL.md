@@ -24,6 +24,9 @@ author. Inbox records expire after seven days; outgoing operation metadata after
 thirty days. Physical cleanup happens with activity and may occur later; other
 state is not promised those windows. The outgoing operation log is not a complete
 reply transcript. Telegram and ChatGPT may retain their own records separately.
+New confirmed bot text is also stored separately for seven days and can join
+authorized incoming history via `include_outgoing`; no old Telegram history is
+fetched or reconstructed. Explain this before setup/upgrade consent.
 Link the [retention details](../../../docs/operations.md#retention-privacy-and-maintenance).
 Include the optional one-message welcome to the confirmed private chat in setup
 consent; resolve its exact recipient and consent before any send.
@@ -194,7 +197,7 @@ IDs private. This does not authorize altering existing private chats or invitati
 Confirm the two humans' agreement; a new sender cannot approve themselves through
 a Telegram message.
 
-Guide the owner to a private, non-forum group with only those humans and this bot:
+Guide the owner to a private group with only those humans and this bot (Topics are supported):
 no public username, linked channel, location or community; disable ordinary-member
 invitations, review join approval/history visibility and revoke unnecessary invite
 links. Require the bot to be an administrator, with no unnecessary ban/invite/delete
@@ -242,6 +245,24 @@ a new chat ID needs new approval. The connector never moderates members or chang
 Telegram permissions. Real incoming/outgoing tests need separate consent; record
 unrun live checks accurately. The enum-only setup planner covers personal setup,
 not group readiness; never claim its `verified` state certifies group activation.
+
+For Topics-enabled supergroups, follow [topic routing/history](../../../docs/group-topics.md).
+Deploy migration 0003 with source, keep the group paused during upgrade, then get
+owner-authorized verification and check `is_forum`. Do not attribute a generic
+membership failure solely to Topics. Before enabling the existing group task,
+preserve each actual event's thread ID in its context, bounded history reads and
+frozen sends. Use explicit topic 1 for General; forum calls without a topic fail.
+Keep plans/coverage per topic and never automatically combine different topics.
+One chat subscription covers all topics; preserve private tasks and avoid duplicates.
+No topic-management rights or private-topic BotFather setting are required here.
+Private-topic issue #15 is not implemented.
+
+Explain that history covers only accepted retained messages, with no Telegram
+backfill. `include_outgoing: true` adds new confirmed bot text with sender/role;
+failed/uncertain sends and pre-upgrade replies are not a transcript. New confirmed
+outgoing text is retained separately for seven days, while operation hashes/metadata
+remain thirty days. Physical cleanup can happen later with activity. Obtain the
+applicable data-storage/upgrade consent and keep history scoped and authorized.
 
 Prefer one consented welcome when supported. Follow
 [the one-time welcome procedure](../../../docs/operations.md#one-time-setup-welcome):

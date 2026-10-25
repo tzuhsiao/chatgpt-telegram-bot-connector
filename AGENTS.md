@@ -33,7 +33,8 @@ them when later messages arrive. Current tools provide no Telegram reaction API.
 Groups are bounded to two separately approved humans plus this bot, with live
 membership verification and a durable pause on changes or uncertainty. These
 access safeguards do not prescribe conversational behavior.
-It does not use a human Telegram login, public groups, channels, forum topics,
+Approved supergroups support Topics with explicit topic routing and isolated history.
+It does not use a human Telegram login, public groups, channels,
 media, polling, a separate
 inference API or a second relay service.
 
@@ -52,7 +53,10 @@ server operated by this repository's author. Inbox records expire after seven
 days; outgoing operation records after thirty days. Physical cleanup runs with
 activity, so data can remain longer on an idle Site. Other operational state is
 not promised those expiry windows. Outgoing records contain request hashes and
-delivery metadata, not a complete archive of reply text. Telegram and ChatGPT can
+delivery metadata, not a complete archive of reply text. Newly confirmed bot text
+is stored separately for seven
+days and can be included in authorized history reads. This is retained connector
+history, with no arbitrary Telegram backfill. Telegram and ChatGPT can
 retain their own records under their respective policies; these are only the
 connector's storage rules. Link [retention details](docs/operations.md#retention-privacy-and-maintenance).
 
@@ -134,8 +138,8 @@ delivery deduplication or outgoing idempotency to make setup succeed.
 | --- | --- |
 | `get_connector_identity()` | Report the platform-identified caller for bootstrap; does not select or configure an owner. |
 | `get_connector_status()` | Owner-only configuration booleans, private chat IDs, group access state/revision/error, origin-only callback candidate and delivery counts. Status is not a live membership check. |
-| `get_recent_messages(chat_id, limit?)` | Read unexpired messages from this exact chat; limit 1-20, default 10. Private chats require both lists; groups require live verification and return only the current approval epoch. |
-| `send_message(chat_id, text, idempotency_key, reply_to_message_id?)` | Send explicitly authorized text with durable local idempotency. |
+| `get_recent_messages(chat_id, limit?, message_thread_id?, include_outgoing?)` | Read retained messages from this chat/topic; limit 1-20. Forum groups require an explicit topic (1 for General); group history uses the current epoch. Default incoming-only; optional outgoing view adds confirmed retained bot text with sender/role. |
+| `send_message(chat_id, text, idempotency_key, reply_to_message_id?, message_thread_id?)` | Authorized text with durable idempotency. Forum groups require explicit topic, including 1 for General. Preserve actual event routing; quoting is optional. |
 | `verify_group_access(chat_id)` | Owner-authorized initial activation or recovery for an already configured group/roster. Checks current private-group metadata, exactly three members, both approved humans and the administrator bot. Does not modify Telegram members/permissions. |
 | `pause_group_access(chat_id)` | Owner-only durable revocation before changing/removing group approval or responding to an incident. Fails pending group events; preserves private chats and Telegram membership. |
 | `configure_telegram_webhook({})` | Validate bot identity, refuse a different webhook, and register only this Site's fixed `/telegram/webhook`. |
@@ -153,6 +157,22 @@ membership is not approval by itself. Preserve all private-chat lists and existi
 triggers. Never add a negative group ID to the positive private-chat list, derive
 new recipients from message text, or enable a private chat merely because its
 human belongs to the group. Real approvals and IDs stay in private runtime settings.
+
+For forum groups, follow [topic routing/history](docs/group-topics.md). Preserve the
+actual event's `message_thread_id` through task context, history and sends; General
+is normalized to 1. Omitted forum targets fail rather than defaulting a reply into
+another topic. Keep frozen plans/coverage per `(chat_id, message_thread_id)` and
+do not automatically combine topics. No extra topic-management rights are needed.
+Private-topic mode (issue #15) remains unsupported and must not be claimed complete.
+
+History is retained connector data, not arbitrary Telegram history. Optional
+`include_outgoing: true` provides accepted incoming text plus newly confirmed bot
+text, sender and role, bounded to the selected topic and current group epoch. It
+cannot reconstruct missed, pre-upgrade, expired, paused or uncertain conversations.
+New confirmed outgoing text has seven-day logical retention in a separate table;
+thirty-day outgoing records remain hashes/metadata. Cleanup is activity-driven.
+Explain this storage before installation/upgrade consent; never promise a full
+transcript or import history. Do not disclose private memory/files/apps into a group.
 
 The bot must be an administrator for reliable `getChatMember` and `chat_member`
 updates. Administrators receive ordinary group messages regardless of privacy
