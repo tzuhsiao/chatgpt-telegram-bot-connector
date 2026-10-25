@@ -1,5 +1,8 @@
 # Allowlisted private groups implementation plan
 
+Historical plan: its roster/count/invitation assumptions are superseded by the
+owner-approved [input boundary](../../group-chat.md) and current AGENTS.md.
+
 **Goal:** Support two separately approved humans and the dedicated bot in an
 explicitly approved private group, preserving independent private chats.
 

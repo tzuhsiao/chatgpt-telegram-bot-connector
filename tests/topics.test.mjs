@@ -13,13 +13,15 @@ function incoming(id,thread=70) {
 }
 async function fixture(t,{forum=true}={}) {
   const env=environment();t.after(()=>env.DB.close());env.TELEGRAM_ALLOWED_GROUPS=JSON.stringify({[CHAT]:['10001','20002']});
-  const state={time:NOW,forum,count:3,events:[],sends:[],fail:false,wrongThread:false,nextId:500,callbackStatus:204};
+  const state={time:NOW,forum,botStatus:'administrator',events:[],sends:[],fail:false,wrongThread:false,nextId:500,callbackStatus:204};
   const worker=createWorker({now:()=>state.time,fetch:async(url,init)=>{
     const args=JSON.parse(init.body),method=new URL(url).pathname.split('/').at(-1);let result;
     if(method==='events') {if(args.type==='verification')return challengeResponse(init);state.events.push(args);return new Response(null,{status:state.callbackStatus});}
     if(method==='getChat')result={id:Number(CHAT),type:'supergroup',...(state.forum?{is_forum:true}:{}),permissions:{can_invite_users:false}};
-    else if(method==='getChatMemberCount')result=state.count;
-    else if(method==='getChatMember')result={user:{id:args.user_id,is_bot:args.user_id===123456},status:args.user_id===123456?'administrator':'member'};
+    else if(method==='getChatMember') {
+      assert.equal(args.user_id,123456,'Only bot-self access is inspected');
+      result={user:{id:123456,is_bot:true},status:state.botStatus};
+    }
     else if(method==='sendMessage') {
       state.sends.push(args);if(state.fail)throw new Error('Synthetic ambiguity');
       result={message_id:state.nextId++,chat:{id:Number(args.chat_id)},...(args.message_thread_id?{message_thread_id:state.wrongThread?999:args.message_thread_id,is_topic_message:true}:{})};
@@ -113,11 +115,11 @@ test('ordinary non-forum reply threads stay unthreaded and private topics remain
   assert.ok((await call(worker,env,'send_message',{...args,chat_id:'10001'})).body.error);
 });
 
-test('forum mode changes and membership failures pause access and hide prior-epoch topic history',async t=>{
+test('forum mode changes and bot access failures pause access and hide prior-epoch topic history',async t=>{
   const {env,worker,state}=await fixture(t);await subscribe(worker,env);await worker.fetch(telegramRequest(incoming(70)),env);
-  await call(worker,env,'send_message',args);state.count=4;
+  await call(worker,env,'send_message',args);state.botStatus='left';
   assert.ok((await call(worker,env,'get_recent_messages',{chat_id:CHAT,message_thread_id:70,include_outgoing:true})).body.error);
-  state.count=3;await call(worker,env,'verify_group_access',{chat_id:CHAT});
+  state.botStatus='member';await call(worker,env,'verify_group_access',{chat_id:CHAT});
   assert.deepEqual(content(await call(worker,env,'get_recent_messages',{chat_id:CHAT,message_thread_id:70,include_outgoing:true})).messages,[]);
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM sent_messages').first()).n,1);
   state.forum=false;assert.ok((await call(worker,env,'get_recent_messages',{chat_id:CHAT,message_thread_id:70})).body.error);
@@ -171,4 +173,23 @@ test('confirmed outgoing content expires in seven days while operation metadata 
   await call(worker,env,'retry_pending_events',{chat_id:CHAT});
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM sent_messages').first()).n,0);
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM outgoing').first()).n,1);
+});
+
+test('rejected forum input leaves topic history empty and approved topic activity unpaused',async t=>{
+  const {env,worker,state}=await fixture(t);state.botStatus='member';await subscribe(worker,env);
+  for(const change of [m=>{m.from.id=30003;},m=>{m.from.is_bot=true;},m=>{m.sender_chat={id:Number(CHAT),type:'supergroup'};}]) {
+    const value=incoming(201,70);change(value.message);await worker.fetch(telegramRequest(value),env);
+  }
+  assert.equal(state.events.length,0);
+  assert.deepEqual(content(await call(worker,env,'get_recent_messages',{chat_id:CHAT,message_thread_id:70,include_outgoing:true})).messages,[]);
+  assert.equal(content(await call(worker,env,'get_connector_status')).groups[0].state,'active');
+  await worker.fetch(telegramRequest(incoming(202,70)),env);assert.equal(state.events.length,1);
+});
+
+test('a retained row from an unapproved sender cannot become a forum quote target',async t=>{
+  const {env,worker,state}=await fixture(t);const revision=content(await call(worker,env,'get_connector_status')).groups[0].revision;
+  await env.DB.prepare("INSERT INTO inbox(event_id,bot_id,update_id,chat_id,sender_id,message_id,text,occurred_at,received_at,group_revision,message_thread_id) VALUES ('invalid-quote','123456',250,?,'30003',260,'Unapproved stored text',?,?,?,70)")
+    .bind(CHAT,new Date(NOW).toISOString(),NOW,revision).run();
+  assert.ok((await call(worker,env,'send_message',{...args,reply_to_message_id:260})).body.error);
+  assert.equal(state.sends.length,0);
 });
