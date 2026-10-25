@@ -3,10 +3,10 @@ import {readFileSync} from 'node:fs';
 import {createHmac} from 'node:crypto';
 
 export class TestDatabase {
-  constructor() {
+  constructor(migrationCount=Infinity) {
     this.sqlite = new DatabaseSync(':memory:');
     const journal=JSON.parse(readFileSync(new URL('../drizzle/meta/_journal.json',import.meta.url),'utf8'));
-    for(const entry of journal.entries) this.sqlite.exec(readFileSync(new URL(`../drizzle/${entry.tag}.sql`,import.meta.url),'utf8'));
+    for(const entry of journal.entries.slice(0,migrationCount)) this.sqlite.exec(readFileSync(new URL(`../drizzle/${entry.tag}.sql`,import.meta.url),'utf8'));
   }
   prepare(sql) {
     const db = this.sqlite;

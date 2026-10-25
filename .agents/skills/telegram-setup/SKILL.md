@@ -1,6 +1,6 @@
 ---
 name: telegram-setup
-description: Use when a user asks a Dot or agent to install or resume this repository's personal Telegram Bot, including fresh setup after deleting a prior Site or plugin.
+description: Use when a user asks a Dot or agent to install or resume this repository's Telegram Bot, including approved private groups and fresh setup after deleting a prior Site or plugin.
 ---
 
 # Set up Telegram Bot Connector
@@ -114,6 +114,12 @@ Set the matching private user/chat allowlists through native controls. Derive th
 Site origin from its response. Keep tokens absent and ingress unregistered on a new
 empty installation while running the [hosted gates](../../../docs/operations.md#hosted-acceptance-gates).
 
+The steps below describe personal private chats. For an explicitly requested
+two-human private group, also follow [group activation](../../../docs/group-chat.md).
+Do not add negative IDs to either positive private list, grant private access from
+group membership, or run the personal welcome in a group. Keep existing chats and
+their complete task trigger sets intact.
+
 Discover `telegram.message.received` with its string `chat_id` filter through the
 genuine event service. Reuse the matching task. If the callback origin is missing,
 make one approved genuine subscription attempt; expect `callback_origin_not_allowed`.
@@ -178,6 +184,64 @@ discard unresolved earlier requests. Follow the guide's deterministic included
 anchor and authoritative private coverage checks, with no timer/polling/batch wait.
 The template adds no shared-state service or durable model queue. Store the filled
 prompt privately.
+
+### Optional approved private group
+
+Explain that shared text goes to the owner's dot and all group members may see
+bot sends. Get separate approval for the exact negative group ID, each of its two
+human IDs, deployment/configuration, history reads and intended sends. Keep actual
+IDs private. This does not authorize altering existing private chats or invitations.
+Confirm the two humans' agreement; a new sender cannot approve themselves through
+a Telegram message.
+
+Guide the owner to a private, non-forum group with only those humans and this bot:
+no public username, linked channel, location or community; disable ordinary-member
+invitations, review join approval/history visibility and revoke unnecessary invite
+links. Require the bot to be an administrator, with no unnecessary ban/invite/delete
+rights. Admin bots receive ordinary group messages even with privacy mode enabled;
+do not change global privacy mode as a workaround. Administrators can add people
+later: membership checks pause on detected changes, but cannot prevent all changes
+or recall content already visible. Explain the snapshot/send race before consent.
+Ask approved human admins to disable Remain Anonymous so posts carry their own IDs.
+
+Use only the reviewed release and additive migration. Preserve existing D1, both
+private lists, credentials and Site/plugin identities. Patch optional native
+`TELEGRAM_ALLOWED_GROUPS` with the approved negative chat ID mapped to exactly two
+distinct positive human ID strings; never copy it to public source or artifacts.
+Apply the environment revision. With bot-connection approval, update the same
+guarded webhook using `configure_telegram_webhook({})` so `chat_member` and
+`my_chat_member` are requested alongside `message`. A matching URL alone does not
+prove membership update types are active.
+
+With explicit activation approval, call `verify_group_access` for that group. It
+checks Telegram metadata, count and identities and enables access only if the bot
+is an admin with both humans present and exactly three members. Stored status is
+not a fresh membership check. Add/reuse exactly one genuine group-scoped event
+subscription with a string chat filter and verified callback origin, preserving
+all private triggers and avoiding duplicate responders. Adapt actual-event sender
+validation to both approved humans and keep context/history in this group. Never
+copy a private conversation or use its single-sender prompt unchanged. The dot
+chooses conversational behavior; quoting or one reply per message is not required.
+
+Use a separate group task. Identify the owner independently from the approved sender
+set; participation/admin status grants no owner-level authority. Protect private
+memory, files, other chats and connected-app context as well as private history.
+Disclosure to the group or privileged external actions need the owner's applicable
+authorization. The dot chooses a natural response or clarifies privately in ChatGPT.
+Before changing/removing approvals, call `pause_group_access`; status stays read-only
+and cannot detect a remove-and-restore cycle with no intervening requests. Drain
+old Worker revisions before re-verification. Invalid optional group configuration
+blocks groups and reports `invalid_group_config` without blocking valid private chats.
+
+On membership/service changes, unapproved/anonymous senders or unverifiable API
+checks, access pauses durably. Repair/review privately, obtain owner approval and
+reverify; do not automatically resume because an outsider left. Old pending events
+are failed, paused text is not backfilled, and history is limited to the new epoch.
+Reconcile any old host task context and uncertain sends separately. Migration to
+a new chat ID needs new approval. The connector never moderates members or changes
+Telegram permissions. Real incoming/outgoing tests need separate consent; record
+unrun live checks accurately. The enum-only setup planner covers personal setup,
+not group readiness; never claim its `verified` state certifies group activation.
 
 Prefer one consented welcome when supported. Follow
 [the one-time welcome procedure](../../../docs/operations.md#one-time-setup-welcome):
