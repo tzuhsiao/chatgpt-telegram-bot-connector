@@ -22,6 +22,16 @@ their Site, not on a separate server operated by this repository's author.
 Explain the [actual retention](#retention-privacy-and-maintenance) and distinguish
 it from Telegram and ChatGPT's own records before requesting setup consent.
 
+Optional [approved private groups](group-chat.md) support exactly two separately
+approved humans and the bot. Keep negative group IDs/participant mappings separate
+from positive private-chat lists. Activation requires the additive migration,
+approved native settings, membership update registration, owner-authorized
+`verify_group_access` and one chat-scoped subscription. The bot must be an admin;
+ordinary group text then arrives without disabling global privacy mode. Admins
+can change membership later. Runtime checks pause on detected changes/uncertainty,
+but cannot offer an atomic roster-and-send guarantee. The guide covers invitation
+controls, chat isolation and incident recovery.
+
 ## Setup capabilities and limits
 
 | Step | Supported path and boundary |
@@ -145,7 +155,7 @@ After both preceding gates pass:
 4. Confirm the message is persisted and a signed MCP event reaches the active ChatGPT subscription.
 5. Read the accepted message with `get_recent_messages` and reply using `send_message` with a new `idempotency_key`.
 6. Repeat that exact send call with the same key and request. Confirm the recorded result is returned without initiating another bot send.
-7. Send a second message and verify the intended conversation behavior. Check that disallowed senders/chats, non-private chats, and unsupported updates cannot trigger an event or reply.
+7. Send a second message and verify the intended conversation behavior. Check that disallowed senders/chats, unapproved groups, channels, and unsupported updates cannot trigger an event or reply.
 
 Do not claim a live round trip passed solely because local tests passed or the Site deployed successfully. A dedicated bot token and an actual approved private chat are required; neither is included in this repository.
 
@@ -292,9 +302,20 @@ thirty-day log and must retain its attempted/sent marker for the installation's
 lifetime. Telegram and ChatGPT can retain their own service records separately;
 these connector windows do not describe or erase those records.
 
-All inbox records, including pending and failed events, expire seven days after `received_at`. Outgoing operation records/tombstones expire thirty days after `created_at`, not after their last retry or update. Read-only status and message tools exclude expired records logically; they do not delete them. Once an incoming record expires, neither history reads nor manual recovery can use it.
+All inbox records, including pending and failed events, expire seven days after `received_at`. Outgoing operation records/tombstones expire thirty days after `created_at`, not after their last retry or update. Status and history tools exclude expired records logically; they do not delete them for retention. Group history checks can still update access/pause state. Once an incoming record expires, neither history reads nor manual recovery can use it.
 
-Physical cleanup runs opportunistically on accepted incoming text webhooks and mutating owner calls to `send_message`, `configure_telegram_webhook`, or `retry_pending_events`. It does not run on read-only tools, page/status requests, identity checks, or subscription operations. There is no scheduled or unsolicited background cleanup, so an idle deployment may retain expired records longer. These windows are not a promise of physical deletion at a particular wall-clock time, and do not imply that every other category of operational state is purged on the same schedule.
+Group access approvals/epochs persist until changed; group update ID markers expire
+after seven days with activity-driven cleanup. They contain identifiers and access
+state, not message text. Old-epoch inbox text is excluded from group tools/delivery
+but still expires under the inbox rules. A pause does not erase content already
+forwarded to the host or visible in Telegram.
+
+Physical cleanup runs opportunistically on authenticated valid-ID Telegram webhooks
+and mutating owner calls to `send_message`, `configure_telegram_webhook`, or
+`retry_pending_events`. It does not run on read-only tools, page/status requests,
+identity checks or subscription operations. There is no scheduled cleanup; an idle
+deployment may retain expired records longer. These windows do not promise physical
+deletion at a particular time or purge every other category of operational state.
 
 Deduplication and outgoing idempotency are limited by the corresponding stored records. After their removal, an old update or operation key may no longer be recognized. Do not casually delete them or reuse historical operation keys. Plan database maintenance while ingress and sending are stopped, preserve replay protection required by the chosen policy, and validate recovery before resuming. There is no database-reset tool in the MCP interface.
 
