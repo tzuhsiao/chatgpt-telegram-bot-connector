@@ -1,5 +1,8 @@
 # Group topic routing plan
 
+Historical plan: human-roster assumptions are superseded by the owner-approved
+[input boundary](../../group-chat.md) and current AGENTS.md; bot access checks remain.
+
 Support forum supergroups within existing two-human group approval, retaining
 membership checks, durable pause/epochs, private-chat compatibility and dot autonomy.
 No live changes, README expansion, topic management or private-topic issue #15.

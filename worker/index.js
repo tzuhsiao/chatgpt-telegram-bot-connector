@@ -341,7 +341,8 @@ async function inspectGroup(chat,env,runtime) {
 function usableBotMember(member,bot,permissions) {
   if(!Number.isSafeInteger(member?.user?.id)||String(member.user.id)!==bot||member.user.is_bot!==true) return false;
   if(member.status==='administrator') return true;
-  if(member.status==='member') return permissions?.can_send_messages!==false;
+  if(permissions?.can_send_messages===false) return false;
+  if(member.status==='member') return true;
   return member.status==='restricted' && member.is_member===true && member.can_send_messages===true;
 }
 
@@ -425,14 +426,17 @@ async function pauseForUpdate(chat,updateId,reason,env,runtime) {
 }
 
 async function membershipUpdate(update,env,runtime) {
-  const member=update.chat_member??update.my_chat_member;
+  const member=update.my_chat_member??update.chat_member;
   const message=update.message;
   const service=message && ['new_chat_members','left_chat_member','migrate_to_chat_id','migrate_from_chat_id'].some(key=>Object.hasOwn(message,key));
   const chat=String((member?.chat??(service?message.chat:null))?.id);
   if(!observedGroups(env).groups.has(chat) && !await first(requireDatabase(env),'SELECT chat_id FROM group_access WHERE bot_id=? AND chat_id=?',botId(env),chat)) return false;
   const migrated=service && (message.migrate_to_chat_id!==undefined || message.migrate_from_chat_id!==undefined);
   if(migrated) await pauseForUpdate(chat,update.update_id,'group_migrated',env,runtime);
-  else if(member && String(member.new_chat_member?.user?.id)===botId(env) && !usableBotMember(member.new_chat_member,botId(env))) {
+  else if(update.my_chat_member && !usableBotMember(member.new_chat_member,botId(env))) {
+    const identified=Number.isSafeInteger(member.new_chat_member?.user?.id)&&String(member.new_chat_member.user.id)===botId(env)&&member.new_chat_member.user.is_bot===true;
+    await pauseForUpdate(chat,update.update_id,identified?'bot_access_lost':'bot_access_unverified',env,runtime);
+  } else if(member && String(member.new_chat_member?.user?.id)===botId(env) && !usableBotMember(member.new_chat_member,botId(env))) {
     await pauseForUpdate(chat,update.update_id,'bot_access_lost',env,runtime);
   } else if(service && String(message.left_chat_member?.id)===botId(env)) {
     await pauseForUpdate(chat,update.update_id,'bot_access_lost',env,runtime);

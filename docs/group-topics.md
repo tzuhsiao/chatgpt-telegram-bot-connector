@@ -74,7 +74,7 @@ callbacks and subscriptions. If active, call `pause_group_access` before upgradi
 this forum deployment; keep the currently paused group paused. Ordinary non-forum
 groups remain compatible, but enabling/disabling Topics needs owner re-verification. After
 approval, call `verify_group_access` and check its `is_forum` result, bot access
-   and active status. A mode change after verification pauses access; owner recheck
+and active status. A mode change after verification pauses access; owner recheck
 starts a new epoch. A generic verification failure can have other bot-access/API/
 metadata causes and is not proof that Topics was the sole problem.
 

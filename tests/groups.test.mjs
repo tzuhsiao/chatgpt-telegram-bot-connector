@@ -150,7 +150,7 @@ test('group-enabled webhook requests membership events while private mode remain
   assert.deepEqual(payload.allowed_updates,['message','my_chat_member']);assert.equal(payload.drop_pending_updates,false);
 });
 
-test('paused ingress is not replayed after recovery and unsafe sender retries do not pause twice',async t=>{
+test('owner-paused ingress is not replayed and rejected retries do not interrupt resumed activity',async t=>{
   const {env,worker,state}=await setup(t);await subscribe(worker,env);
   await call(worker,env,'pause_group_access',{chat_id:GROUP});
   const outsider=groupUpdate(91,30003);
@@ -252,9 +252,10 @@ test('observed removal or invalid group config latches revocation before identic
   }
 });
 
-test('membership notifications still latch a previously stored group while config is absent',async t=>{
+test('bot-loss notifications still latch a previously stored group while config is absent',async t=>{
   const {env,worker}=await setup(t);const original=env.TELEGRAM_ALLOWED_GROUPS;
   env.TELEGRAM_ALLOWED_GROUPS='';await worker.fetch(telegramRequest(membership()),env);
+  assert.equal((await env.DB.prepare('SELECT last_error FROM group_access').first()).last_error,'bot_access_lost');
   env.TELEGRAM_ALLOWED_GROUPS=original;
   assert.ok((await call(worker,env,'get_recent_messages',{chat_id:GROUP})).body.error);
 });
@@ -435,5 +436,20 @@ test('usable bot role changes do not pause but actual loss of text access does',
   assert.ok((await call(worker,env,'get_recent_messages',{chat_id:GROUP})).body.error);
   assert.equal((await call(worker,env,'get_connector_status')).body.result.structuredContent.groups[0].last_error,'group_access_unverified');
   state.members.get(123456).status='restricted';state.members.get(123456).is_member=true;state.members.get(123456).can_send_messages=true;
+  assert.ok((await call(worker,env,'verify_group_access',{chat_id:GROUP})).body.error);
+  state.chat.permissions.can_send_messages=true;
   assert.equal((await call(worker,env,'verify_group_access',{chat_id:GROUP})).body.result.structuredContent.state,'active');
+});
+
+test('malformed bot-self notifications pause only their known group and deduplicate',async t=>{
+  const {env,worker}=await setup(t);
+  const legacy=membership(140,30003,'member');delete legacy.chat_member.new_chat_member.user;
+  await worker.fetch(telegramRequest(legacy),env);
+  assert.equal((await call(worker,env,'get_connector_status')).body.result.structuredContent.groups[0].state,'active');
+  const malformed={update_id:141,my_chat_member:legacy.chat_member};
+  await worker.fetch(telegramRequest(malformed),env);
+  const record=await env.DB.prepare('SELECT revision,last_error FROM group_access').first();
+  assert.equal(record.last_error,'bot_access_unverified');
+  await worker.fetch(telegramRequest(malformed),env);
+  assert.deepEqual(await env.DB.prepare('SELECT revision,last_error FROM group_access').first(),record);
 });

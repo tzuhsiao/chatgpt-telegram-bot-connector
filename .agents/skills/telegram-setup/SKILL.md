@@ -118,7 +118,7 @@ Site origin from its response. Keep tokens absent and ingress unregistered on a 
 empty installation while running the [hosted gates](../../../docs/operations.md#hosted-acceptance-gates).
 
 The steps below describe personal private chats. For an explicitly requested
-two-human private group, also follow [group activation](../../../docs/group-chat.md).
+approved private group (two configured senders), also follow [group activation](../../../docs/group-chat.md).
 Do not add negative IDs to either positive private list, grant private access from
 group membership, or run the personal welcome in a group. Keep existing chats and
 their complete task trigger sets intact.
