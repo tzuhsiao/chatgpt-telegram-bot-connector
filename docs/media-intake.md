@@ -41,14 +41,22 @@ venue, story, poll, game, checklist, invoice, giveaway and rich-message payloads
 type-only; phone/vCard, coordinates, nested people/chats, titles and rich content
 are not copied. This intentionally does not provide a complete content transcript.
 
-Unknown media/attachment-shaped fields or a bounded file-bearing object can
-produce `[Telegram unknown media message]`. A caption also provides media evidence.
-Only safe descriptors are extracted, with bounded traversal (64 objects, depth two,
-32 children per object); unknown field names/values are not exposed. Known envelope,
-reply, quote and forward-origin metadata is excluded. A future fileless field with
-neither media/attachment evidence nor a caption cannot be identified reliably and
-needs an explicit future adapter. Telegram provides no universal media-versus-service
-discriminator; this fallback does not claim arbitrary future payload support.
+Every structurally valid, authorized ordinary non-text `message` not excluded as
+a known service produces a receipt, even without a caption, recognizable field
+name or accessible file identifier. Unrecognized content uses
+`[Telegram unknown content message]` and `media: {type: "unknown"}`. No evidence
+heuristic, file traversal or future adapter is needed merely to receive it.
+Unknown fields are opaque: their names, values and nested file IDs are never
+copied or recursively inspected. Only the same bounded known `caption` and
+`media_group_id` fields may accompany an unknown receipt. Safe file descriptors
+are extracted only by the explicit recognized-media adapters above.
+
+Telegram has no universal content-versus-service discriminator. Exclusions use
+explicit known service fields, never broad name/prefix rules that could silently
+discard future ordinary content. An unrecognized future lifecycle message can
+therefore also produce a generic receipt; extend the explicit registry when its
+semantics are known. A generic receipt is not an instruction, proof of media
+understanding, or a requirement to reply. The dot keeps its conversational judgment.
 
 ## Boundaries and storage
 
@@ -57,7 +65,8 @@ poll answers, callbacks and known service/lifecycle messages do not become media
 events. In particular, `new_chat_photo` is a service update, not an incoming photo.
 Membership/migration updates keep their existing operational handling. The service
 field registry follows the [official Message definition](https://core.telegram.org/bots/api#message);
-future service fields must be classified before adding content support.
+future service fields can be added explicitly without making unknown content
+dependent on a naming guess or media-evidence test.
 
 Actual sender/bot/anonymous rejection, exact private/group approvals, owner-only
 history and topic/General routing are unchanged. Reject unauthorized input before

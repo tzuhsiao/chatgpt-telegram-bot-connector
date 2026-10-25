@@ -83,25 +83,62 @@ test('other ordinary content types notify without disclosing personal payloads',
   for(const value of ['PRIVATE_PHONE','12.345','67.89','PRIVATE_VCARD','PRIVATE_TITLE','nested_personal_file','99999']) assert.equal(stored.includes(value),false);
 });
 
-test('unknown media-bearing content has a safe generic fallback without raw payloads',async t=>{
+test('unknown content always produces a generic receipt without inspecting arbitrary payloads',async t=>{
   const {env,worker,state}=await fixture(t);
-  for(const fields of [{future_attachment:{arbitrary:'PRIVATE_VALUE',asset:{...file,filename:'PRIVATE_NAME'}}},{future_media:{private_data:'PRIVATE_VALUE'}},{caption:'Unknown caption',future_asset:{file_id:'future_file'}}]) {
+  const cases=[
+    {future_attachment:{arbitrary:'PRIVATE_VALUE',asset:{...file,filename:'PRIVATE_NAME'}}},
+    {future_media:{private_data:'PRIVATE_VALUE'}},
+    {future_card:{label:'PRIVATE_VALUE',contact:{phone_number:'PRIVATE_PHONE'},location:{latitude:12.345}}},
+    {future_card:{a:{b:{c:{file_id:'PRIVATE_DEEP_ID',secret:'PRIVATE_SECRET'}}}}},
+    {future_fileless:{opaque:true}},
+    {future_service:{file_id:'PRIVATE_UNKNOWN_SERVICE_ID'}},
+    {new_chat_card:{label:'PRIVATE_VALUE'}},
+    {unknown_flag:true},
+    {},
+    {reply_to_message:{photo:[file]},external_reply:{document:file},forward_origin:{file_id:'PRIVATE_QUOTED_ID'}},
+  ];
+  for(const fields of cases) {
     await worker.fetch(telegramRequest(mediaUpdate(60+state.events.length,fields)),env);
-    assert.equal(state.events.at(-1).data.media.type,'unknown');assert.match(state.events.at(-1).data.text,/^\[Telegram unknown media message\]/);
+    assert.deepEqual(state.events.at(-1).data.media,{type:'unknown'});
+    assert.equal(state.events.at(-1).data.text,'[Telegram unknown content message]');
   }
-  assert.equal(state.events.length,3);assert.equal(state.events[0].data.media.files[0].file_id,file.file_id);
-  const serialized=JSON.stringify(state.events);for(const value of ['PRIVATE_VALUE','PRIVATE_NAME','future_attachment','future_asset'])assert.equal(serialized.includes(value),false);
+  assert.equal(state.events.length,cases.length);
+  const serialized=JSON.stringify(state.events)+JSON.stringify((await env.DB.prepare('SELECT * FROM inbox').all()).results);
+  for(const value of ['PRIVATE_','future_attachment','future_card','future_service','synthetic_file','12.345'])assert.equal(serialized.includes(value),false);
+  await worker.fetch(telegramRequest(mediaUpdate(85,{caption:'Unknown caption',media_group_id:'unknown_album',future_card:{private:'PRIVATE_VALUE'}})),env);
+  assert.deepEqual(state.events.at(-1).data.media,{type:'unknown',caption:'Unknown caption',media_group_id:'unknown_album'});
+  assert.equal(state.events.at(-1).data.text,'[Telegram unknown content message]\nUnknown caption');
 });
 
-test('service, edited, membership and bare envelope updates never become media events',async t=>{
+test('explicit known services and non-message update roots never become media events',async t=>{
   const {env,worker,state}=await fixture(t);let id=70;
-  const serviceFields=['new_chat_photo','pinned_message','forum_topic_created','video_chat_started','successful_payment','users_shared','web_app_data','giveaway_created','community_chat_joined','gift_upgrade_sent','chat_owner_left','chat_owner_changed','future_service'];
+  const serviceFields=['new_chat_photo','pinned_message','forum_topic_created','video_chat_started','successful_payment','users_shared','web_app_data','giveaway_created','community_chat_joined','gift_upgrade_sent','chat_owner_left','chat_owner_changed'];
   for(const key of serviceFields) await worker.fetch(telegramRequest(mediaUpdate(id++,{[key]:{...file},caption:'Do not deliver lifecycle events'})),env);
-  for(const fields of [{reply_to_message:{photo:[file]}},{external_reply:{document:file}},{forward_origin:{file_id:'fake'}},{}]) await worker.fetch(telegramRequest(mediaUpdate(id++,fields)),env);
   const photo=mediaUpdate(id++,{photo:[file]});
   for(const key of ['edited_message','channel_post','edited_channel_post','business_message','guest_message']) await worker.fetch(telegramRequest({update_id:id++,[key]:photo.message}),env);
   await worker.fetch(telegramRequest({update_id:id++,poll_answer:{poll_id:'synthetic'}}),env);
   assert.equal(state.events.length,0);assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM inbox').first()).n,0);
+});
+
+for(const [chat,forum] of [['10001',false],[CHAT,false],[CHAT,true]])test(`generic unknown receipts preserve duplicate and history boundaries: ${chat==='10001'?'private':forum?'forum':'group'}`,async t=>{
+  const {env,worker,state}=await fixture(t,{chat,forum});const thread=forum?70:null;
+  const value=mediaUpdate(650,{future_card:{a:{b:{c:{file_id:'PRIVATE_DEEP_ID'}}}}},chat,thread);
+  state.status=503;assert.equal((await worker.fetch(telegramRequest(value),env)).status,503);
+  value.message.future_card={changed:'PRIVATE_CHANGED'};state.time+=10000;state.status=204;
+  assert.equal((await worker.fetch(telegramRequest(value),env)).status,200);
+  await worker.fetch(telegramRequest(value),env);assert.equal(state.events.length,2);assert.equal(state.bodies[0],state.bodies[1]);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM inbox').first()).n,1);
+  const args={chat_id:chat,...(forum?{message_thread_id:thread}:{})};
+  for(const include_outgoing of [false,true]) {
+    const messages=content(await call(worker,env,'get_recent_messages',{...args,include_outgoing})).messages;
+    assert.equal(messages.length,1);assert.deepEqual(messages[0].media,{type:'unknown'});assert.equal(messages[0].text,'[Telegram unknown content message]');
+    if(forum)assert.equal(messages[0].message_thread_id,70);
+  }
+  if(forum)assert.deepEqual(content(await call(worker,env,'get_recent_messages',{chat_id:chat,message_thread_id:80})).messages,[]);
+  const bad=mediaUpdate(651,{future_card:{}},chat,thread);bad.message.from.id=30003;
+  await worker.fetch(telegramRequest(bad),env);assert.equal(state.events.length,2);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM inbox').first()).n,1);
+  if(chat===CHAT)assert.equal((await env.DB.prepare('SELECT state FROM group_access').first()).state,'active');
 });
 
 test('gift-upgrade lifecycle attachments never wake the dot even without captions',async t=>{
