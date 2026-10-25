@@ -94,6 +94,11 @@ Outgoing idempotency, frozen arguments and uncertain-send safeguards are unchang
 No new key, topic or coverage may be used to bypass an uncertain result. Keep
 unresolved substantive requests; an emoji acknowledgment is not a substantive answer.
 
+For an owner-approved media upgrade, apply the [automatic-image supplement](../prompts/group-media.md)
+to the existing group responder while preserving its full trigger set, topic/coverage
+state and frozen sends. [Retrieval details](media-retrieval.md) distinguish receipts,
+private byte caching, actual image blocks and unsupported binary transports.
+
 ## References and limits
 
 - [Telegram privacy mode](https://core.telegram.org/bots/features#privacy-mode): ordinary-message delivery choices are separate from connector authorization.

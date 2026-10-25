@@ -1,8 +1,9 @@
 # Media message intake
 
 An accepted ordinary Telegram `message` no longer needs a `text` field. The
-connector notifies the dot that media arrived; it does not download, recognize,
-transcribe, interpret or send media. The dot still decides whether/how to respond.
+connector notifies the dot that media arrived. [Hybrid retrieval](media-retrieval.md)
+adds private bounded prefetch and an image-read tool; receipt itself does not
+recognize, transcribe, interpret or send media. The dot still decides whether/how to respond.
 No bot setting, access list, subscription or recipient changes are needed by this
 code change. Messages must actually reach the bot under Telegram's delivery rules.
 
@@ -36,7 +37,7 @@ Photos keep one available size (Telegram's last/largest variant). Animations tak
 precedence over their compatibility `document` field, and live photos over their
 compatibility `photo` field. Live photos can retain the motion file and one still;
 paid media keeps only file descriptors already present, with no payment/unlock or
-download. Previews still notify even without available file IDs. Contact, location,
+automatic download. Previews still notify even without available file IDs. Contact, location,
 venue, story, poll, game, checklist, invoice, giveaway and rich-message payloads are
 type-only; phone/vCard, coordinates, nested people/chats, titles and rich content
 are not copied. This intentionally does not provide a complete content transcript.
@@ -78,8 +79,8 @@ Additive migration `0004_inbox_media.sql` adds nullable `inbox.media_json`; lega
 rows remain text-only. Deploy source and **all** journaled migrations together,
 preserving the existing D1 and operational settings. This repository task does not
 deploy. Metadata/captions share the existing seven-day inbox retention and logical
-history expiry; physical cleanup is activity-driven. No file bytes or arbitrary
-past Telegram history are stored/fetched. Old discarded media cannot be backfilled.
+history expiry; physical cleanup is activity-driven. Receipt rows contain no file bytes; the separate [private cache](media-retrieval.md)
+holds bounded short-lived bytes. Arbitrary past Telegram history is not fetched. Old discarded media cannot be backfilled.
 Callback retries use the original persisted metadata, caption and stable event ID,
 even if a duplicate update differs. Outgoing tools and uncertain-send protections
 remain unchanged.
