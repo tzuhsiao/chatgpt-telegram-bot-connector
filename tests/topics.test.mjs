@@ -142,6 +142,29 @@ test('concurrent duplicate topic sends dispatch once and General quotes cannot t
   assert.equal(content(await call(worker,env,'get_recent_messages',{chat_id:'10001',include_outgoing:true})).messages.length,0);
 });
 
+test('inconsistent forum payload mode pauses instead of silently admitting General',async t=>{
+  const {env,worker,state}=await fixture(t);await subscribe(worker,env);
+  const value=incoming(91,null);delete value.message.chat.is_forum;
+  await worker.fetch(telegramRequest(value),env);assert.equal(state.events.length,0);
+  assert.equal(content(await call(worker,env,'get_connector_status')).groups[0].state,'paused');
+});
+
+test('verified mode differences have a precise pause reason and paused forum calls still require a topic',async t=>{
+  const {env,worker,state}=await fixture(t);state.forum=false;
+  await call(worker,env,'get_recent_messages',{chat_id:CHAT,message_thread_id:70});
+  assert.equal(content(await call(worker,env,'get_connector_status')).groups[0].last_error,'group_mode_changed');
+  assert.ok((await call(worker,env,'send_message',{chat_id:CHAT,text:'Missing topic',idempotency_key:'paused-missing'})).body.error);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM outgoing').first()).n,0);
+});
+
+test('combined history uses message order rather than mixed Telegram and confirmation clocks',async t=>{
+  const {env,worker}=await fixture(t);await subscribe(worker,env);
+  const value=incoming(92,70);value.message.date+=120;await worker.fetch(telegramRequest(value),env);
+  await call(worker,env,'send_message',args);
+  const messages=content(await call(worker,env,'get_recent_messages',{chat_id:CHAT,message_thread_id:70,include_outgoing:true})).messages;
+  assert.deepEqual(messages.map(m=>m.role),['bot','user']);
+});
+
 test('confirmed outgoing content expires in seven days while operation metadata retains its thirty-day window',async t=>{
   const {env,worker,state}=await fixture(t);await call(worker,env,'send_message',args);state.time+=8*86400000;
   assert.deepEqual(content(await call(worker,env,'get_recent_messages',{chat_id:CHAT,message_thread_id:70,include_outgoing:true})).messages,[]);

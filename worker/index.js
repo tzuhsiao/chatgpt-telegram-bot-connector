@@ -335,7 +335,7 @@ async function inspectGroup(chat,env,runtime) {
     if(!Number.isSafeInteger(member?.user?.id) || String(member.user.id)!==id || member.user.is_bot!==(id===bot) ||
       (id===bot?member.status!=='administrator':!['creator','administrator','member'].includes(member.status))) throw new Error('Group membership is unsafe.');
   }
-  if(await inspectGroupMetadata(chat,env,runtime)!==forum) throw new Error('Group mode changed.');
+  if(await inspectGroupMetadata(chat,env,runtime)!==forum) throw new AppError('Group mode changed.',200,-32016,'group_mode_changed');
   if(await telegramApi('getChatMemberCount',{chat_id:chat},env,runtime)!==3) throw new Error('Group membership changed.');
   return forum;
 }
@@ -353,9 +353,14 @@ async function inspectGroupMetadata(chat,env,runtime) {
 async function checkGroup(chat,env,runtime) {
   const snapshot=await groupState(chat,env);
   if(snapshot.state!=='active') throw new AppError('Group access is paused. Owner-authorized verification is required.',200,-32016);
-  try {if(Number(await inspectGroup(chat,env,runtime))!==snapshot.is_forum) throw new Error('Group mode changed.');} catch {
-    await pauseGroup(chat,env,'membership_unverified');
+  let forum;
+  try {forum=await inspectGroup(chat,env,runtime);} catch(error) {
+    await pauseGroup(chat,env,error instanceof AppError&&error.reason==='group_mode_changed'?'group_mode_changed':'membership_unverified');
     throw new AppError('Group membership could not be verified; access is paused.',200,-32016);
+  }
+  if(Number(forum)!==snapshot.is_forum) {
+    await pauseGroup(chat,env,'group_mode_changed');
+    throw new AppError('Group mode changed; owner-authorized verification is required.',200,-32016);
   }
   await groupCurrent(snapshot,env);
   return snapshot;
@@ -367,8 +372,8 @@ async function verifyGroupAccess(args,env,runtime) {
   if(!groupId(chat)) throw new AppError('A configured group ID is required.');
   const snapshot=await groupState(chat,env);
   let forum;
-  try {forum=await inspectGroup(chat,env,runtime);} catch {
-    await pauseGroup(chat,env,'membership_unverified');
+  try {forum=await inspectGroup(chat,env,runtime);} catch(error) {
+    await pauseGroup(chat,env,error instanceof AppError&&error.reason==='group_mode_changed'?'group_mode_changed':'membership_unverified');
     throw new AppError('Group membership could not be verified; access is paused.',200,-32016);
   }
   const result=await run(env.DB,`UPDATE group_access SET state='active',revision=revision+?,verified_at=?,last_error=NULL,is_forum=?
@@ -532,7 +537,7 @@ async function telegramWebhook(request,env,runtime) {
         throw error;
       }
     }
-    if(group && !group.is_forum && (payload.message.chat?.is_forum || payload.message.is_topic_message===true)) {
+    if(group && ((group.is_forum===1 && payload.message.chat?.is_forum!==true) || (!group.is_forum && (payload.message.chat?.is_forum || payload.message.is_topic_message===true)))) {
       await pauseForUpdate(groupChat,payload.update_id,'group_mode_changed',env,runtime);
       return json({ok:true,ignored:true});
     }
@@ -611,6 +616,10 @@ async function sendMessage(args,env,runtime) {
   }
   const existing=await first(db,'SELECT * FROM outgoing WHERE operation_key=?',operationKey);
   if(existing) return reused(existing);
+  if(groupId(chat) && args.message_thread_id===undefined) {
+    const known=await first(db,'SELECT is_forum FROM group_access WHERE bot_id=? AND chat_id=?',botId(env),chat);
+    if(known?.is_forum===1) requestedThread(args,known);
+  }
   // Membership inspection is a preflight, not an in-flight Telegram send. Reserve
   // only afterward so its multi-call duration cannot age a send into uncertainty.
   let group=null,blocked=false;
@@ -732,7 +741,7 @@ async function recentMessages(args,env,runtime) {
       WHERE chat_id=? AND bot_id=? AND received_at>=? AND (? IS NULL OR group_revision=?) AND message_thread_id IS ?
       UNION ALL SELECT NULL,NULL,chat_id,bot_id,message_id,message_thread_id,text,occurred_at,'sent',NULL,'bot' FROM sent_messages
       WHERE chat_id=? AND bot_id=? AND sent_at>=? AND (? IS NULL OR group_revision=?) AND message_thread_id IS ?)
-      ORDER BY occurred_at DESC,message_id DESC LIMIT ?`,chat,bot,cutoff,revision,revision,thread,chat,bot,cutoff,revision,revision,thread,limit);
+      ORDER BY message_id DESC LIMIT ?`,chat,bot,cutoff,revision,revision,thread,chat,bot,cutoff,revision,revision,thread,limit);
   } else {
     messages=await rows(db,'SELECT event_id,update_id,chat_id,sender_id,message_id,text,occurred_at,state,last_error,message_thread_id FROM inbox WHERE chat_id=? AND bot_id=? AND received_at>=? AND (? IS NULL OR group_revision=?) AND message_thread_id IS ? ORDER BY received_at DESC,update_id DESC LIMIT ?',chat,bot,cutoff,revision,revision,thread,limit);
     if(thread===null) for(const message of messages) delete message.message_thread_id;

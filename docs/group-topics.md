@@ -44,7 +44,7 @@ it does not change the destination of the current frozen plan.
 `get_recent_messages` defaults to retained **incoming** messages for compatibility.
 For a coherent available topic view, request that exact topic with
 `include_outgoing: true` and a bounded limit (default 10, maximum 20). It returns
-newest first, with `role: user` / `role: bot`, actual sender ID, chat/topic/message
+newest message ID first, with `role: user` / `role: bot`, actual sender ID, chat/topic/message
 IDs, text and timestamps. Incoming timestamps originate in accepted Telegram
 updates; outgoing timestamps record local confirmation time.
 
@@ -69,7 +69,9 @@ Group history, including bot replies, is limited to the current access epoch.
 
 The parent/operator deploys reviewed source with additive migration
 `0003_group_topics.sql`, preserving existing D1, private allowlists, credentials,
-callbacks and subscriptions. Keep the current group paused during upgrade. After
+callbacks and subscriptions. If active, call `pause_group_access` before upgrading
+this forum deployment; keep the currently paused group paused. Ordinary non-forum
+groups remain compatible, but enabling/disabling Topics needs owner re-verification. After
 approval, call `verify_group_access` and check its `is_forum` result, current roster
 and active status. A mode change after verification pauses access; owner recheck
 starts a new epoch. A generic verification failure can have other membership/API/

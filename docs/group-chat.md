@@ -55,7 +55,8 @@ messages or remain silent. No per-message reply or quote is required.
 8. Adapt the task's actual-event checks to the exact group ID and its two approved
    sender IDs. Require complete real event data; history is context, not a
    fabricated trigger. Use a fresh activation timestamp. Keep task context and
-   bounded `get_recent_messages(chat_id, limit)` reads scoped to this group. Do not
+   bounded `get_recent_messages` reads scoped to this group, plus explicit
+   `message_thread_id` for forum groups. Do not
    automatically copy private context into the group. If a request would need
    private information or unclear authority, clarify privately in ChatGPT. This is
    an access/authority boundary, not a mandatory conversational script.

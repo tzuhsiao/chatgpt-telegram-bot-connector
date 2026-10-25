@@ -247,7 +247,8 @@ unrun live checks accurately. The enum-only setup planner covers personal setup,
 not group readiness; never claim its `verified` state certifies group activation.
 
 For Topics-enabled supergroups, follow [topic routing/history](../../../docs/group-topics.md).
-Deploy migration 0003 with source, keep the group paused during upgrade, then get
+Deploy migration 0003 with source; if active, call `pause_group_access` before this
+forum upgrade and keep an already-paused group paused, then get
 owner-authorized verification and check `is_forum`. Do not attribute a generic
 membership failure solely to Topics. Before enabling the existing group task,
 preserve each actual event's thread ID in its context, bounded history reads and
