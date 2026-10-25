@@ -345,7 +345,8 @@ test('migration upgrades populated private data without changing its history or 
   const db=new TestDatabase(2);t.after(()=>db.close());
   await db.prepare("INSERT INTO inbox(event_id,bot_id,update_id,chat_id,sender_id,message_id,text,occurred_at,received_at) VALUES ('old','123456',1,'10001','10001',11,'Retained private text',?,?)").bind(new Date(NOW).toISOString(),NOW).run();
   await db.prepare("INSERT INTO outgoing(operation_key,request_hash,chat_id,state,created_at,updated_at) VALUES ('old-operation','hash','10001','uncertain',?,?)").bind(NOW,NOW).run();
-  db.sqlite.exec(readFileSync(new URL('../drizzle/0002_group_access.sql',import.meta.url),'utf8'));
+  const remaining=JSON.parse(readFileSync(new URL('../drizzle/meta/_journal.json',import.meta.url),'utf8')).entries.slice(2);
+  for(const entry of remaining) db.sqlite.exec(readFileSync(new URL(`../drizzle/${entry.tag}.sql`,import.meta.url),'utf8'));
   const worker=createWorker({now:()=>NOW,fetch:async()=>{throw new Error('No network needed');}});
   assert.equal((await call(worker,environment(db),'get_recent_messages',{chat_id:'10001'})).body.result.structuredContent.messages[0].text,'Retained private text');
   assert.equal((await db.prepare('SELECT state FROM outgoing').first()).state,'uncertain');

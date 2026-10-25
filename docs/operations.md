@@ -302,6 +302,14 @@ thirty-day log and must retain its attempted/sent marker for the installation's
 lifetime. Telegram and ChatGPT can retain their own service records separately;
 these connector windows do not describe or erase those records.
 
+New confirmed bot sends also retain their submitted text in a separate
+`sent_messages` table for seven days from local confirmation. Optional
+`include_outgoing: true` combines those records with accepted incoming messages,
+including sender/role and topic context. The thirty-day operation table remains
+metadata/hashes. No pre-upgrade, failed or uncertain reply text is reconstructed,
+and no arbitrary Telegram history is fetched. See [group topics](group-topics.md)
+for explicit topic selection, General behavior and incomplete-history limits.
+
 All inbox records, including pending and failed events, expire seven days after `received_at`. Outgoing operation records/tombstones expire thirty days after `created_at`, not after their last retry or update. Status and history tools exclude expired records logically; they do not delete them for retention. Group history checks can still update access/pause state. Once an incoming record expires, neither history reads nor manual recovery can use it.
 
 Group access approvals/epochs persist until changed; group update ID markers expire
