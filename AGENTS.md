@@ -1,5 +1,25 @@
 # Telegram Bot Connector: agent instructions
 
+## Core project philosophy
+
+This project gives dots two capabilities:
+
+1. Trigger the dot when a new accepted Telegram message arrives.
+2. Provide tools the dot can use to operate its Telegram bot.
+
+Conversational behavior is delegated to the dot. It decides whether, when and how
+to respond in conversation. Future changes must not make replies or quoting mandatory, require
+one reply per message, or impose rigid conversational policies. Conversation
+templates remain adaptable defaults.
+
+Technical safeguards remain required and are not relaxed by this conversational
+autonomy, including all controls below: access control, credential protection,
+correct routing and recipient authorization, idempotency, and uncertain-send
+handling. Configuration and other privileged actions retain their existing
+authorization and approval requirements.
+
+## Implementation scope
+
 This unofficial, experimental connector is primarily designed for dots. One Site
 hosts an MCP Worker and D1 database for one owner and one dedicated Telegram bot.
 It transports private text and authorized replies; the host runs the model.
