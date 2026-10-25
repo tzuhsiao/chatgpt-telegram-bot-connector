@@ -7,7 +7,7 @@ Connect a dedicated Telegram bot to ChatGPT using MCP tools and webhook events. 
 ## Scope
 
 - One owner and one dedicated bot per deployment.
-- Allowlisted private conversations and separately approved two-human private groups; text messages only. See [group support](group-chat.md) for membership checks, access epochs and limits.
+- Allowlisted private conversations and private groups with exact actual-sender approvals; text only. See [group support](group-chat.md) for input boundaries, bot access and epochs. Users manage the audience.
 - One active event subscription per allowed chat, preventing accidental duplicate responders.
 - Receive a Telegram message, persist it, deliver an MCP event, and expose an explicitly authorized reply tool.
 - English-only source, documentation and UI. No real account IDs, personal assistant names, credentials, instance URLs or deployment IDs in this public repository.

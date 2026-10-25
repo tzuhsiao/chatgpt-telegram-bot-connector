@@ -22,15 +22,15 @@ their Site, not on a separate server operated by this repository's author.
 Explain the [actual retention](#retention-privacy-and-maintenance) and distinguish
 it from Telegram and ChatGPT's own records before requesting setup consent.
 
-Optional [approved private groups](group-chat.md) support exactly two separately
-approved humans and the bot. Keep negative group IDs/participant mappings separate
+Optional [approved private groups](group-chat.md) use the existing two approved
+human sender IDs, independently of the audience. Keep group/sender mappings separate
 from positive private-chat lists. Activation requires the additive migration,
-approved native settings, membership update registration, owner-authorized
-`verify_group_access` and one chat-scoped subscription. The bot must be an admin;
-ordinary group text then arrives without disabling global privacy mode. Admins
-can change membership later. Runtime checks pause on detected changes/uncertainty,
-but cannot offer an atomic roster-and-send guarantee. The guide covers invitation
-controls, chat isolation and incident recovery.
+approved native settings, bot-self update registration, owner-authorized
+`verify_group_access` and one chat-scoped subscription. No roster/count or invitation
+gate applies; rejected senders and other members' changes do not pause approved
+activity. Users manage audience and reply visibility. Bot access/routing failures,
+explicit pause and config revocation still halt unsafe operations. Administration
+or Group Privacy Mode are Telegram delivery choices, not sender authorization.
 
 ## Setup capabilities and limits
 

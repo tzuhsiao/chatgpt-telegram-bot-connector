@@ -1,8 +1,9 @@
 # Group topics and retained conversation history
 
-Approved private supergroups can keep Telegram Topics enabled. The same exact
-two-human roster, bot administration, membership checks and durable access pause
-apply to the entire group. Topic routing does not approve new participants, grant
+Approved private supergroups can keep Telegram Topics enabled. The exact group and
+actual human sender allowlists apply independently of the audience. Bot-self access,
+routing checks and explicit revocation remain; roster size, invitations and harmless
+joins are not authorization gates. Topic routing does not approve new senders, grant
 owner authority, or impose a conversational policy. The dot decides whether to
 answer, acknowledge, combine already-arrived messages in a topic, or stay silent.
 
@@ -72,9 +73,9 @@ The parent/operator deploys reviewed source with additive migration
 callbacks and subscriptions. If active, call `pause_group_access` before upgrading
 this forum deployment; keep the currently paused group paused. Ordinary non-forum
 groups remain compatible, but enabling/disabling Topics needs owner re-verification. After
-approval, call `verify_group_access` and check its `is_forum` result, current roster
+approval, call `verify_group_access` and check its `is_forum` result, bot access
 and active status. A mode change after verification pauses access; owner recheck
-starts a new epoch. A generic verification failure can have other membership/API/
+starts a new epoch. A generic verification failure can have other bot-access/API/
 metadata causes and is not proof that Topics was the sole problem.
 
 Update the existing group task before activation: validate actual events and both
