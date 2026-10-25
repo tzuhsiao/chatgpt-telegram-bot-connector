@@ -7,11 +7,11 @@ Connect a dedicated Telegram bot to ChatGPT using MCP tools and webhook events. 
 ## Scope
 
 - One owner and one dedicated bot per deployment.
-- Allowlisted private conversations and private groups with exact actual-sender approvals; text only. See [group support](group-chat.md) for input boundaries, bot access and epochs. Users manage the audience.
+- Allowlisted private conversations and private groups with exact actual-sender approvals; incoming text and [media notifications](media-intake.md), outgoing text. See [group support](group-chat.md) for input boundaries, bot access and epochs. Users manage the audience.
 - One active event subscription per allowed chat, preventing accidental duplicate responders.
 - Receive a Telegram message, persist it, deliver an MCP event, and expose an explicitly authorized reply tool.
 - English-only source, documentation and UI. No real account IDs, personal assistant names, credentials, instance URLs or deployment IDs in this public repository.
-- No human accounts, public groups, private-topic mode, media, polling tasks, external hosting account or additional model API. Approved forum groups use [explicit topic routing](group-topics.md).
+- No human accounts, public groups, private-topic mode, media downloads/interpretation/outbound media, polling tasks, external hosting account or additional model API. Approved forum groups use [explicit topic routing](group-topics.md).
 
 ## Approach
 
@@ -35,7 +35,7 @@ An event already bound to a subscription cannot migrate to a different subscript
 
 Outgoing messages use a durable operation key and request hash. Repeated successful calls return the same result. An ambiguous timeout is recorded and is not blindly retried: Telegram does not provide an upstream exactly-once guarantee.
 
-All inbox records, including pending events, expire seven days after receipt. Outgoing operation records expire thirty days after creation. Read-only tools exclude expired records without deleting them. Cleanup is opportunistic on accepted text webhooks and mutating send/configure/retry tool calls; there is no scheduled deletion guarantee. Recovery and replay protection are bounded by the corresponding retention windows.
+All inbox records, including pending events and media metadata, expire seven days after receipt. Outgoing operation records expire thirty days after creation. Read-only tools exclude expired records without deleting them. Cleanup is opportunistic on authenticated webhooks and mutating send/configure/retry tool calls; there is no scheduled deletion guarantee. Recovery and replay protection are bounded by the corresponding retention windows.
 
 ## Acceptance
 

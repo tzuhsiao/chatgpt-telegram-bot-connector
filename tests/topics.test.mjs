@@ -131,7 +131,8 @@ test('migration preserves legacy private idempotency and never invents pre-upgra
   const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
   await db.prepare("INSERT INTO outgoing(operation_key,request_hash,chat_id,state,message_id,created_at,updated_at) VALUES (?,?,'10001','sent',88,?,?)")
     .bind(hash(['owner-test','123456',legacy.idempotency_key]),hash(['10001',legacy.text,null]),NOW,NOW).run();
-  db.sqlite.exec(readFileSync(new URL('../drizzle/0003_group_topics.sql',import.meta.url),'utf8'));
+  const journal=JSON.parse(readFileSync(new URL('../drizzle/meta/_journal.json',import.meta.url),'utf8'));
+  for(const entry of journal.entries.slice(3))db.sqlite.exec(readFileSync(new URL(`../drizzle/${entry.tag}.sql`,import.meta.url),'utf8'));
   const worker=createWorker({now:()=>NOW,fetch:async()=>{throw new Error('Legacy replay must not dispatch');}});
   assert.equal(content(await call(worker,env,'send_message',legacy)).reused,true);
   assert.deepEqual(content(await call(worker,env,'get_recent_messages',{chat_id:'10001',include_outgoing:true})).messages,[]);

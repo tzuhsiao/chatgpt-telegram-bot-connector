@@ -24,8 +24,7 @@ test('non-allowlisted humans, groups, bot senders and unsupported updates are ig
   const outsider=update();outsider.message.from.id=20002;
   const group=update();group.message.chat.type='group';group.message.chat.id=-42;
   const bot=update();bot.message.from.is_bot=true;
-  const photo=update();delete photo.message.text;photo.message.photo=[{file_id:'synthetic'}];
-  for(const item of [outsider,group,bot,photo,{update_id:42,edited_message:update().message}]) assert.equal((await worker.fetch(telegramRequest(item),env)).status,200);
+  for(const item of [outsider,group,bot,{update_id:42,edited_message:update().message}]) assert.equal((await worker.fetch(telegramRequest(item),env)).status,200);
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM inbox').first()).n,0);assert.equal(fetches,0);
 });
 
