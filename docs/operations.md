@@ -256,7 +256,7 @@ existing plan's key, grouping or quote choice after dispatch or to escape an err
 Emoji text is not a Telegram reaction; any real reaction needs an actually available
 and separately authorized tool. Policy changes do not expand transport authority.
 
-Incoming accepted text messages are persisted before event delivery. D1 uniqueness and atomic delivery leases coordinate concurrent requests; retries use a stable event ID.
+Incoming accepted text and [media notifications](media-intake.md) are persisted before event delivery. Media stores only type, caption and bounded allowlisted identifiers/metadata, not file bytes or interpreted contents. D1 uniqueness and atomic delivery leases coordinate concurrent requests; retries use a stable event ID.
 
 The webhook acknowledges a successful callback, a previously completed delivery, or a terminal failure. A transient callback failure retains pending state and returns a failure to Telegram while the automatic attempt budget remains. A duplicate pending update is reconsidered for delivery according to its lease and backoff, rather than being mistaken for success merely because it was persisted.
 
@@ -310,7 +310,7 @@ metadata/hashes. No pre-upgrade, failed or uncertain reply text is reconstructed
 and no arbitrary Telegram history is fetched. See [group topics](group-topics.md)
 for explicit topic selection, General behavior and incomplete-history limits.
 
-All inbox records, including pending and failed events, expire seven days after `received_at`. Outgoing operation records/tombstones expire thirty days after `created_at`, not after their last retry or update. Status and history tools exclude expired records logically; they do not delete them for retention. Group history checks can still update access/pause state. Once an incoming record expires, neither history reads nor manual recovery can use it.
+All inbox records, including pending/failed events and media captions/metadata, expire seven days after `received_at`. Outgoing operation records/tombstones expire thirty days after `created_at`, not after their last retry or update. Status and history tools exclude expired records logically; they do not delete them for retention. Group history checks can still update access/pause state. Once an incoming record expires, neither history reads nor manual recovery can use it.
 
 Group access approvals/epochs persist until changed; group update ID markers expire
 after seven days with activity-driven cleanup. They contain identifiers and access

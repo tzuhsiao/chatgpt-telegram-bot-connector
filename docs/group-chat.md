@@ -1,6 +1,6 @@
 # Approved group input and Telegram delivery
 
-The connector accepts text only from the exact configured private group ID and
+The connector accepts text and [media notifications](media-intake.md) only from the exact configured private group ID and
 actual allowlisted human sender IDs. The existing configuration names two approved
 senders; it does not assert there are only two people in the group. Users manage
 who joins, invitation permissions, administrators and who can read bot replies.

@@ -42,6 +42,10 @@ it does not change the destination of the current frozen plan.
 
 ## What history contains
 
+Incoming [media notifications](media-intake.md) preserve the same topic, sender,
+caption and bounded metadata in both history modes. Their placeholder text does
+not represent interpreted media content; no Telegram files or old history are fetched.
+
 `get_recent_messages` defaults to retained **incoming** messages for compatibility.
 For a coherent available topic view, request that exact topic with
 `include_outgoing: true` and a bounded limit (default 10, maximum 20). It returns
