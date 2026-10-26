@@ -835,7 +835,8 @@ async function setMessageReaction(args,env,runtime) {
       record.event_id,bot,chat,args.message_id,args.update_id,record.sender_id,thread,record.group_revision,runtime.now()-7*DAY,record.media_json,record.reaction_album);
     if(!current)throw new AppError('Retained reaction target is unavailable.',403,-32001);
     // Telegram redirects album reactions, so exact-message authorization cannot hold.
-    if(record.reaction_album===1||(record.media_json&&JSON.parse(record.media_json)?.media_group_id))throw new AppError('Album or pre-upgrade media reaction targets are unsupported because exact targeting cannot be established.');
+    const legacyMedia=record.reaction_album===-1 && record.media_json!==null;
+    if(record.reaction_album===1||legacyMedia||(record.media_json&&JSON.parse(record.media_json)?.media_group_id))throw new AppError('Album or pre-upgrade media reaction targets are unsupported because exact targeting cannot be established.');
     if(group)await groupCurrent(group,env);
   }
   await authorizedTarget();

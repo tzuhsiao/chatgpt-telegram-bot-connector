@@ -13,7 +13,6 @@ CREATE TABLE reaction_operations (
 CREATE UNIQUE INDEX reaction_target_busy ON reaction_operations(bot_id,chat_id,message_id)
   WHERE state IN ('applying','uncertain');
 --> statement-breakpoint
-ALTER TABLE inbox ADD COLUMN reaction_album INTEGER NOT NULL DEFAULT 0;
---> statement-breakpoint
--- Legacy media discarded malformed album IDs. Fail closed until those rows expire.
-UPDATE inbox SET reaction_album=1 WHERE media_json IS NOT NULL;
+-- -1 marks rows whose raw album presence was not retained before this migration.
+-- New ingestion explicitly writes 0 or 1; no row-data backfill is required.
+ALTER TABLE inbox ADD COLUMN reaction_album INTEGER NOT NULL DEFAULT -1;

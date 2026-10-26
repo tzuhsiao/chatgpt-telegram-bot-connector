@@ -34,6 +34,14 @@ assert.deepEqual(await readdir(join(root,'dist/plugin-skills/skills')),['telegra
 console.log('Public source fingerprint and canonical-plugin skill payload verified.');
 
 assert.deepEqual(await skillTree(join(root,'dist/.openai/drizzle')),await skillTree(join(root,'drizzle')));
+// Sites migrations accept schema changes, not data backfills. Check the shipped SQL.
+for(const [path,bytes] of Object.entries(await skillTree(join(root,'dist/.openai/drizzle')))) {
+  if(!path.endsWith('.sql'))continue;
+  for(const statement of bytes.toString('utf8').replace(/--[^\n]*/g,'').split(';').map(value=>value.trim()).filter(Boolean)) {
+    assert.match(statement,/^(?:CREATE (?:UNIQUE )?(?:TABLE|INDEX)\b|ALTER TABLE\b)/i,`Non-schema migration statement in ${path}`);
+  }
+}
+
 const discovery=await module.default.fetch(new Request('https://connector.example/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:3,method:'tools/list'})}),{});
 const reaction=(await discovery.json()).result.tools.find(tool=>tool.name==='set_message_reaction');
 assert.deepEqual(reaction.inputSchema.required,['chat_id','message_id','update_id','reaction','idempotency_key']);
