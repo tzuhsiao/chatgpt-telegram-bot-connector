@@ -32,3 +32,11 @@ async function skillTree(directory) {
 assert.deepEqual(await skillTree(join(root,'dist/plugin-skills/skills/telegram-maintenance')),await skillTree(join(root,'.agents/skills/telegram-maintenance')));
 assert.deepEqual(await readdir(join(root,'dist/plugin-skills/skills')),['telegram-maintenance']);
 console.log('Public source fingerprint and canonical-plugin skill payload verified.');
+
+assert.deepEqual(await skillTree(join(root,'dist/.openai/drizzle')),await skillTree(join(root,'drizzle')));
+const discovery=await module.default.fetch(new Request('https://connector.example/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:3,method:'tools/list'})}),{});
+const reaction=(await discovery.json()).result.tools.find(tool=>tool.name==='set_message_reaction');
+assert.deepEqual(reaction.inputSchema.required,['chat_id','message_id','update_id','reaction','idempotency_key']);
+assert.ok(reaction.inputSchema.properties.reaction.enum.includes('👀'));
+assert.ok(reaction.inputSchema.properties.reaction.enum.includes(''));
+console.log('Reaction tool discovery and complete migration payload verified.');

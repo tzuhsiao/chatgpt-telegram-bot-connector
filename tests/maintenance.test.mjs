@@ -81,7 +81,7 @@ test('event diagnostics correlate safe failures and omit attacker-controlled key
 test('tool discovery exposes maintenance without changing names or image contract',async t=>{
   const env=environment();t.after(()=>env.DB.close());
   const response=await createWorker().fetch(rpc('tools/list'),env),body=await response.json();
-  assert.equal(body.result.tools.length,9);
+  assert.deepEqual(body.result.tools.map(tool=>tool.name).sort(),['configure_telegram_webhook','get_connector_identity','get_connector_status','get_message_media','get_recent_messages','pause_group_access','retry_pending_events','send_message','set_message_reaction','verify_group_access'].sort());
   for(const tool of body.result.tools) assert.match(tool.description,/telegram-maintenance/);
   const media=body.result.tools.find(tool=>tool.name==='get_message_media');
   assert.deepEqual(media.inputSchema.required,['chat_id','message_id','update_id']);

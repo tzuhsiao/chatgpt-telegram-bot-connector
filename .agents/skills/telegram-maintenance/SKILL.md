@@ -35,7 +35,11 @@ idempotency key. A retry hint is never authorization. `sending`, `uncertain`, or
 never probe `send_message`, switch keys or change arguments to get past uncertainty.
 Recorded failures and conflicts need review too; replaying a failed key does not
 resend. Retention expiry does not establish non-delivery. A newly authorized send
-is a separate decision after reconciliation. Other writes/timeouts can have
+is a separate decision after reconciliation. Reaction operations also preserve exact message/update/topic, chosen emoji and
+key. `applying` or `uncertain` blocks further reactions on that target pending
+private reconciliation. Uncertain targets stay locked for their retained lifetime;
+reconciliation does not unlock them. Receipt never resolves substantive answer coverage or
+blocks an independent authorized text answer. Other writes/timeouts can have
 uncertain outcomes: inspect before retrying creates or configuration changes.
 
 ## Contribute once, with evidence

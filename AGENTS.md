@@ -38,7 +38,7 @@ whether to answer, acknowledge briefly (including emoji-only text), combine seve
 already-arrived messages into one coherent reply, or remain silent. Normal sends
 omit `reply_to_message_id`; a separate quoted reply per event is not required.
 Keep unresolved substantive requests and frozen plan coverage rather than dropping
-them when later messages arrive. Current tools provide no Telegram reaction API.
+them when later messages arrive. `set_message_reaction` provides authorized retained-message reactions, independently of text sends and answer coverage.
 Groups use their existing two approved human sender IDs independently of audience
 size. The connector checks its own bot access and routing, not the roster or invite
 permissions. These safeguards do not prescribe conversational behavior.
@@ -151,6 +151,7 @@ delivery deduplication or outgoing idempotency to make setup succeed.
 | `get_recent_messages(chat_id, limit?, message_thread_id?, include_outgoing?)` | Read retained messages from this chat/topic; limit 1-20. Forum groups require an explicit topic (1 for General); group history uses the current epoch. Default incoming-only; optional outgoing view adds confirmed retained bot text with sender/role. |
 | `get_message_media(chat_id, message_id, update_id, message_thread_id?, file_index?, mode?)` | Read a retained current authorized file; eligible images auto-prefetch up to 2,000,000 bytes, on-demand up to 8,000,000 bytes. Only supported image blocks are model-readable; see [retrieval](docs/media-retrieval.md). |
 | `send_message(chat_id, text, idempotency_key, reply_to_message_id?, message_thread_id?)` | Authorized text with durable idempotency. Forum groups require explicit topic, including 1 for General. Preserve actual event routing; quoting is optional. |
+| `set_message_reaction(chat_id, message_id, update_id, reaction, idempotency_key, message_thread_id?)` | Set/update this bot's ordinary emoji reaction or clear with an empty string on an exact authorized retained incoming target. Explicit forum topic required; albums unsupported. Separate from answer coverage and send keys. See [reactions](docs/message-reactions.md). |
 | `verify_group_access(chat_id)` | Owner-authorized activation/recovery for a configured private group. Checks metadata, topic mode and this bot's usable access; never audits member count or the human roster. Does not modify Telegram settings. |
 | `pause_group_access(chat_id)` | Owner-only durable revocation before changing/removing group approval or responding to an incident. Fails pending group events; preserves private chats and Telegram membership. |
 | `configure_telegram_webhook({})` | Validate bot identity, refuse a different webhook, and register only this Site's fixed `/telegram/webhook`. |
@@ -236,9 +237,10 @@ when changing its policy. Local tests and callback acceptance do not prove model
 execution, subscription renewal or a real Telegram round trip.
 Follow the normal-chat guide's deterministic actual-message anchor, per-kind plan
 keys and coverage/migration rules when grouping responses. Do not invent shared
-state, timer/polling collection, reaction support or new app authority. An optional
-emoji acknowledgment is text via `send_message`; a real reaction needs an actually
-available, separately authorized tool. The short public README stays unchanged.
+state, timer/polling collection or new app authority. Optional emoji text uses
+`send_message`; real reactions use the separately authorized `set_message_reaction`
+contract in [message reactions](docs/message-reactions.md). Reaction receipt never
+resolves substantive requests or changes existing text send keys. The short public README stays unchanged.
 
 Keep Telegram credentials absent while a new deployment's authentication,
 persistence and subscription gates are tested. Verify the real public edge rejects

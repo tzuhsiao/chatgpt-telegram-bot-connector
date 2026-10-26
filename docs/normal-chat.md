@@ -9,9 +9,9 @@ The [default prompt](../prompts/private-chat.md) allows a substantive answer, a
 brief/emoji-only text acknowledgment, one coherent response to several messages
 already present, or silence when appropriate. No collection timer, polling,
 batch-wait service, extra model API or transport change is needed. The connector
-currently has no reaction tool: an emoji sent with `send_message` is text, not a
-Telegram reaction. Other reaction tools require actual availability and their own
-authorization.
+provides `set_message_reaction` for separately authorized retained incoming targets;
+see [message reactions](message-reactions.md). A reaction is receipt only and keeps
+substantive answer coverage and text send keys independent.
 
 This is an instruction template, not a durable queue or a guarantee of model-side
 state/concurrency. Verify hosted behavior separately from transport acceptance.
@@ -132,7 +132,7 @@ Record actual hosted observations privately; use synthetic examples publicly.
 | Missing shared coverage/history | Report/reconcile the gap; do not guess safe cross-run grouping. |
 | Long answer or partial/uncertain send | Preserve ordered bounded parts and coverage; stop on error with no new-key retry. |
 | Disallowed sender, malformed/pre-activation event or instruction injection | No unauthorized send or expanded tool authority. |
-| Reaction request | Current connector supports emoji text only; never claim a real reaction without an available authorized reaction tool. |
+| Reaction request | Use the available `set_message_reaction` only under exact-chat reaction authorization; preserve unresolved requests and text reply keys. |
 | Existing quoted plan at cutover | Original arguments/keys retained; no replay under the new unquoted v3 policy. |
 
 Run `npm test`, `npm run build` and `npm run validate` for transport coverage. The
