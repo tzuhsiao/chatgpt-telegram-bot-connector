@@ -273,10 +273,14 @@ existing canonical plugin; publication and hosted checks require their own scope
 Use Node.js 24. No runtime dependencies need installation. Run:
 
 ```sh
+npm run format:check
 npm test
 npm run build
 npm run validate
 ```
+
+Run `npm run format` before committing JavaScript or JSON changes. Prettier is
+pinned in `package.json` and covers code only; Markdown prose is excluded.
 
 Tests use real SQLite-backed D1 fixtures and synthetic network responses. CI runs
 these checks without deployment or production secrets. Inspect the final diff and
