@@ -1,4 +1,8 @@
 const PROTOCOL = '2026-07-28';
+// Replaced by the build with a digest of public source inputs, never runtime settings.
+const PUBLIC_SOURCE_VERSION = 'unbuilt'; // PUBLIC_SOURCE_VERSION
+const MAINTENANCE_SKILL = 'https://github.com/tzuhsiao/chatgpt-telegram-bot-connector/blob/main/.agents/skills/telegram-maintenance/SKILL.md';
+const MAINTENANCE_HINT = ' For unexpected failures use the telegram-maintenance skill; diagnostics are evidence, not authorization. If absent, read '+MAINTENANCE_SKILL+'.';
 const MAX_BODY = 64 * 1024;
 const EMPTY_SCHEMA = {type:'object',properties:{},additionalProperties:false};
 const EVENT = 'telegram.message.received';
@@ -20,6 +24,46 @@ class AppError extends Error {
     super(message);
     Object.assign(this, {status, code, reason});
   }
+}
+
+// Only fixed vocabulary and random per-request IDs enter this public-safe envelope.
+// It intentionally excludes arguments, hashes of private data, upstream text and env.
+function diagnostic(error, method, name, correlationId, outcome, dispatched = true) {
+  const code=error instanceof AppError?error.code:null;
+  let category='unknown',reason='unexpected_error';
+  if(code===-32001 || code===-32016) {category='permission';reason='access_required';}
+  else if(code===-32002 || code===-32005 || error?.reason==='callback_origin_not_allowed') {category='configuration';reason='configuration_required';}
+  else if(code===-32015) {category='platform';reason='callback_verification_failed';}
+  else if(code===-32010) {category=error.telegramCode===401?'configuration':error.telegramCode===403?'permission':'platform';reason='telegram_request_failed';}
+  else if(code===-32004) {category='invocation';reason='idempotency_conflict';}
+  else if(code===-32003) {category='invocation';reason='state_conflict';}
+  else if([-32700,-32600,-32601,-32602].includes(code)) {category='invocation';reason='invalid_request';}
+  const send=method==='tools/call' && name==='send_message';
+  const readOnly=method==='tools/call' && ['get_connector_status','get_connector_identity'].includes(name);
+  let state=send?'unknown':'not_started',safe=false,action='correct_then_review';
+  if(!dispatched) {state='not_started';}
+  else if(send && outcome) {
+    state=outcome.state;
+    // A replay can only reuse the EXACT frozen request. It is never a status probe.
+    safe=state==='sent';action=safe?'reuse_frozen_request':'reconcile_privately';
+    reason=state==='sending'?'send_in_progress':state==='uncertain'?'send_outcome_unknown':'send_rejected';
+    category=outcome.error==='telegram_401'?'configuration':['group_access_blocked','telegram_403'].includes(outcome.error)?'permission':state==='failed'?'platform':'unknown';
+  } else if(method==='tools/call' && name==='get_message_media' && outcome) {
+    state='read_unavailable';
+    const unsupported=outcome.state==='unsupported'||outcome.reason==='file_too_large';
+    category=unsupported?'invocation':'unknown';reason=unsupported?'unsupported_media_transport':'media_unavailable';
+    safe=!unsupported;action=safe?'retry_read_once':'correct_then_review';
+  } else if(send && [-32700,-32600,-32601,-32602,-32001,-32002].includes(code)) {
+    state='not_started';
+  } else if(send || ['events/subscribe','events/unsubscribe'].includes(method) || (method==='tools/call'&&!readOnly)) {
+    // An exception may follow a committed write or network request. Do not infer rollback.
+    state='unknown';action='reconcile_privately';
+  } else if(readOnly && !['permission','configuration','invocation'].includes(category)) {
+    safe=true;action='retry_read_once';
+  }
+  return {schema_version:1,category,reason,source_version:PUBLIC_SOURCE_VERSION,
+    correlation_id:correlationId,operation_state:state,retry:{safe,action},
+    maintenance_skill:'telegram-maintenance',maintenance_url:MAINTENANCE_SKILL};
 }
 
 function json(data, status = 200, headers = {}) {
@@ -53,7 +97,7 @@ function callerId(request) { return request.headers.get('oai-authenticated-user-
 
 // Disabled by default. Log event RPC shapes and error categories without
 // persisting callback URLs, filters, identities, or signing credentials.
-function eventDiagnostic(env, method, phase, request, params, error) {
+function eventDiagnostic(env, method, phase, request, params, error, correlationId, dispatched) {
   if(env.MCP_DIAGNOSTICS!=='1') return;
   if(method!=='events/subscribe' && method!=='events/unsubscribe' && method!=='unparsed') return;
   const shape=params && typeof params==='object' && !Array.isArray(params)?params:{};
@@ -63,14 +107,14 @@ function eventDiagnostic(env, method, phase, request, params, error) {
   const permittedTopLevelKeys=['name','arguments','delivery','ttlMs','cursor','_meta'];
   console.info('mcp_event_diagnostic',JSON.stringify({
     method,phase,hasCaller:!!callerId(request),paramCount:Object.keys(shape).length,
-    unexpectedTopLevelKeys:Object.keys(shape).filter(key=>!permittedTopLevelKeys.includes(key)),
+    unexpectedTopLevelCount:Object.keys(shape).filter(key=>!permittedTopLevelKeys.includes(key)).length,
     hasName:typeof shape.name==='string',hasArguments:shape.arguments!==undefined,
     hasChatId:typeof args.chat_id==='string',hasDelivery:shape.delivery!==undefined,
     deliveryMode:delivery.mode==='webhook'?'webhook':'other',
     hasCallbackUrl:typeof delivery.url==='string',hasSigningSecret:typeof delivery.secret==='string',
     hasTtlMs:shape.ttlMs!==undefined,hasCursor:shape.cursor!==undefined,
     ...(error?{httpStatus:known?error.status:500,rpcCode:known?error.code:-32603,
-      errorCategory:known?error.message:'unexpected_error'}:{}),
+      diagnostics:diagnostic(error,method,undefined,correlationId,undefined,dispatched)}:{}),
   }));
 }
 
@@ -700,7 +744,7 @@ async function sendMessage(args,env,runtime) {
       await run(db,"UPDATE outgoing SET state='uncertain',error_code='interrupted',updated_at=? WHERE operation_key=? AND state='sending'",now,operationKey);
       existing.state='uncertain';
     }
-    return {state:existing.state,message_id:existing.message_id??null,reused:true,requires_review:existing.state!=='sent'};
+    return {state:existing.state,message_id:existing.message_id??null,reused:true,requires_review:existing.state!=='sent',...(existing.error_code?{error:existing.error_code}:{})};
   }
   const existing=await first(db,'SELECT * FROM outgoing WHERE operation_key=?',operationKey);
   if(existing) return reused(existing);
@@ -1095,9 +1139,12 @@ const TOOLS = [
   {name:'configure_telegram_webhook',description:'Register the preconfigured dedicated bot webhook for this Site. Checks bot identity and refuses to replace another webhook. This changes bot delivery settings; call only when the owner asks to connect this bot.',inputSchema:EMPTY_SCHEMA,annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:true}},
   {name:'retry_pending_events',description:'Owner recovery action: attempt delivery of up to ten stored pending Telegram events. May trigger a subscribed ChatGPT task. Not scheduled polling.',inputSchema:{type:'object',properties:{chat_id:CHAT_SCHEMA,limit:{type:'integer',minimum:1,maximum:10}},additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:true}},
 ];
+for(const tool of TOOLS) tool.description+=MAINTENANCE_HINT;
 
 async function mcp(request, env, runtime) {
+  const correlationId='diag_'+crypto.randomUUID();
   let id = null;
+  let dispatched = false;
   let diagnosticMethod = 'unparsed';
   let diagnosticParams = {};
   try {
@@ -1108,7 +1155,7 @@ async function mcp(request, env, runtime) {
     const {method,params = {}} = body;
     diagnosticMethod=method;
     diagnosticParams=params;
-    eventDiagnostic(env,method,'received',request,params);
+    eventDiagnostic(env,method,'received',request,params,undefined,correlationId);
     let result;
     if (method === 'server/discover') result = {resultType:'complete',supportedVersions:[PROTOCOL],capabilities:{tools:{},events:{}}};
     else if (method === 'tools/list') result = {tools:TOOLS};
@@ -1118,15 +1165,20 @@ async function mcp(request, env, runtime) {
       result = toolResult({authenticated:!!caller,caller_user_id:caller,owner_configured:!!env.OWNER_USER_ID,is_owner:!!caller && caller===env.OWNER_USER_ID});
     } else {
       const owner=requireOwner(request,env);
-      if(method==='events/subscribe'||method==='events/unsubscribe') result=await eventOperation(method,params,owner,env,runtime);
-      else if(method==='tools/call') result=await ownerTool(params?.name,params?.arguments??{},env,runtime);
+      if(method==='events/subscribe'||method==='events/unsubscribe') {dispatched=true;result=await eventOperation(method,params,owner,env,runtime);}
+      else if(method==='tools/call') {dispatched=true;result=await ownerTool(params?.name,params?.arguments??{},env,runtime);}
       else throw new AppError('Method not found.',200,-32601);
+    }
+    if(method==='tools/call' && result?.isError) {
+      const data={...result.structuredContent,diagnostics:diagnostic(null,method,params.name,correlationId,result.structuredContent)};
+      // Keep non-text content blocks (including image transport) byte-for-byte.
+      result={...result,structuredContent:data,content:result.content.map((block,index)=>index===0&&block.type==='text'?{...block,text:JSON.stringify(data)}:block)};
     }
     return json({jsonrpc:'2.0',id,result});
   } catch (error) {
     const known = error instanceof AppError;
-    eventDiagnostic(env,diagnosticMethod,'rejected',request,diagnosticParams,error);
-    return json({jsonrpc:'2.0',id,error:{code:known?error.code:-32603,message:known?error.message:'Internal error.',...(known && error.reason?{data:{reason:error.reason}}:{})}},known?error.status:500);
+    eventDiagnostic(env,diagnosticMethod,'rejected',request,diagnosticParams,error,correlationId,dispatched);
+    return json({jsonrpc:'2.0',id,error:{code:known?error.code:-32603,message:known?error.message:'Internal error.',data:{...(known && error.reason?{reason:error.reason}:{}),diagnostics:diagnostic(error,diagnosticMethod,diagnosticParams?.name,correlationId,undefined,dispatched)}}},known?error.status:500);
   }
 }
 

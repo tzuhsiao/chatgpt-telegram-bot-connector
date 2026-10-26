@@ -1,6 +1,7 @@
-import {mkdir, readFile, writeFile, cp, access} from 'node:fs/promises';
+import {mkdir, readFile, writeFile, cp, access, rm} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
+import {publicSource} from './public-source.mjs';
 
 const root = fileURLToPath(new URL('..',import.meta.url));
 const has = async path => {try {await access(path); return true;} catch {return false;}};
@@ -10,7 +11,12 @@ const config = JSON.parse(source);
 if (config.d1 !== 'DB' || !config.capabilities?.includes('mcp')) throw new Error('The connector requires the DB binding and MCP capability.');
 await mkdir(resolve(root,'dist/server'),{recursive:true});
 await mkdir(resolve(root,'dist/.openai'),{recursive:true});
-await cp(resolve(root,'worker/index.js'),resolve(root,'dist/server/index.js'));
+const sourceRecord=await publicSource(root);
+const worker=await readFile(resolve(root,'worker/index.js'),'utf8');
+await writeFile(resolve(root,'dist/server/index.js'),worker.replace("'unbuilt'; // PUBLIC_SOURCE_VERSION",JSON.stringify(sourceRecord.version)+'; // PUBLIC_SOURCE_VERSION'));
+await writeFile(resolve(root,'dist/public-source.json'),JSON.stringify(sourceRecord,null,2)+'\n');
+await rm(resolve(root,'dist/plugin-skills'),{recursive:true,force:true});
+await cp(resolve(root,'.agents/skills/telegram-maintenance'),resolve(root,'dist/plugin-skills/skills/telegram-maintenance'),{recursive:true});
 await writeFile(resolve(root,'dist/.openai/hosting.json'),JSON.stringify(config,null,2)+'\n');
 if (await has(resolve(root,'drizzle'))) await cp(resolve(root,'drizzle'),resolve(root,'dist/.openai/drizzle'),{recursive:true});
 console.log('Built Worker artifact. Deployment identity remains local.');

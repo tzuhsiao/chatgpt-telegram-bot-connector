@@ -72,7 +72,7 @@ test('unauthorized event filters and invalid signing keys fail before outbound r
   assert.equal(fetches,0);
 });
 
-test('event diagnostics log unexpected top-level keys but never request values',async t=>{
+test('event diagnostics count unexpected top-level keys without logging their names or values',async t=>{
   const env=environment();t.after(()=>env.DB.close());
   env.MCP_DIAGNOSTICS='1';
   env.TELEGRAM_ALLOWED_CHAT_IDS='';
@@ -85,7 +85,7 @@ test('event diagnostics log unexpected top-level keys but never request values',
     .map(entry=>JSON.parse(entry.slice('mcp_event_diagnostic '.length)));
   assert.equal(records.length,2);
   for(const record of records) {
-    assert.deepEqual(record.unexpectedTopLevelKeys,['extra_wire_field']);
+    assert.equal(record.unexpectedTopLevelCount,1);
     assert.equal(record.hasSigningSecret,true);
   }
   const output=entries.join('\n');
@@ -108,7 +108,7 @@ test('event subscribe accepts optional opaque MCP metadata without logging it',a
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM subscriptions WHERE enabled=1').first()).n,1);
   const records=entries.filter(entry=>entry.startsWith('mcp_event_diagnostic '))
     .map(entry=>JSON.parse(entry.slice('mcp_event_diagnostic '.length)));
-  assert.deepEqual(records.map(record=>record.unexpectedTopLevelKeys),[[]]);
+  assert.deepEqual(records.map(record=>record.unexpectedTopLevelCount),[0]);
   assert.equal(entries.join('\n').includes('private-meta-canary'),false);
 });
 
