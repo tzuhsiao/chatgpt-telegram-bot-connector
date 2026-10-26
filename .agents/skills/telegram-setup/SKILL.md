@@ -184,8 +184,9 @@ history reads. The connector notifies and provides tools; it does not require a
 reply to every event or one reply per message. Normal sends omit `reply_to_message_id`.
 The Dot may answer several already-arrived messages coherently, acknowledge with
 brief/emoji-only text, or stay silent while retaining unresolved substantive requests.
-There is no reaction tool in this connector; do not claim text emoji are reactions.
-Other reaction tools need actual availability and separate authorization.
+Real reactions use set_message_reaction with separate exact-chat authorization;
+see [reactions](../../../docs/message-reactions.md). Receipt does not resolve
+substantive requests or change text send coverage/keys.
 Preserve its trigger, frozen per-plan/per-part operation keys, coverage and
 uncertain-send handling. Use a fresh activation instant for a fresh installation;
 do not backfill earlier messages. Reconcile legacy quoted/per-message plans under

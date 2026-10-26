@@ -249,7 +249,9 @@ The connector provides notifications and tools rather than mandatory one-to-one
 conversation behavior. Default sends omit optional `reply_to_message_id`. The Dot
 may answer, use a brief/emoji-only text acknowledgment, stay silent, or combine
 several already-arrived messages into a coherent response, retaining unresolved
-substantive requests. No reaction tool, polling loop or collection timer is added.
+substantive requests. Separately authorized [message reactions](message-reactions.md)
+record receipt without resolving requests or changing send keys. No polling loop
+or collection timer is added.
 Combined plans require frozen actual coverage, a deterministic included-message
 anchor and safe private coordination as described in the guide. Do not change an
 existing plan's key, grouping or quote choice after dispatch or to escape an error.
@@ -271,7 +273,7 @@ Telegram's own retries are also finite. The MVP has no durable scheduled drainer
 3. Call `retry_pending_events`, optionally scoped to an allowlisted `chat_id`. Its `limit` defaults to 5 and accepts 1-10 records. This is an explicit recovery action and can retry exhausted automatic deliveries.
 4. Recheck status. Recover additional batches only after understanding continuing errors.
 
-`get_connector_status` exposes configuration booleans, owner-only `allowed_chat_ids`, the origin-only `requested_callback_origin`, and counts for `active_subscriptions`, `pending_deliveries`, `retry_exhausted_deliveries`, `failed_deliveries`, and `uncertain_sends`. It must not disclose the bot token, webhook secret, full callback URLs, paths, queries, signing keys, or message text. Treat allowed chat IDs and the requested origin as private when sharing diagnostics. A recorded requested origin is a candidate for operator review, not an automatically approved destination.
+`get_connector_status` exposes configuration booleans, owner-only `allowed_chat_ids`, the origin-only `requested_callback_origin`, and counts for `active_subscriptions`, `pending_deliveries`, `retry_exhausted_deliveries`, `failed_deliveries`, `uncertain_sends`, and `uncertain_reactions` (uncertain or stale-applying reaction metadata). It must not disclose the bot token, webhook secret, full callback URLs, paths, queries, signing keys, or message text. Treat allowed chat IDs and the requested origin as private when sharing diagnostics. A recorded requested origin is a candidate for operator review, not an automatically approved destination.
 
 The recovery tool retries unexpired stored pending deliveries, including those with `retry_limit`; it cannot recreate a message that was never accepted or replay a deliberately terminal update as if it were pending. Recovery is limited to seven days after the message was received. Expired pending records are removed by the recovery tool's cleanup before retry selection. The callback recipient should deduplicate stable event IDs, because an accepted callback whose acknowledgement is lost may be delivered again.
 
@@ -310,7 +312,7 @@ metadata/hashes. No pre-upgrade, failed or uncertain reply text is reconstructed
 and no arbitrary Telegram history is fetched. See [group topics](group-topics.md)
 for explicit topic selection, General behavior and incomplete-history limits.
 
-All inbox records, including pending/failed events and media captions/metadata, expire seven days after `received_at`. Outgoing operation records/tombstones expire thirty days after `created_at`, not after their last retry or update. Status and history tools exclude expired records logically; they do not delete them for retention. Group history checks can still update access/pause state. Once an incoming record expires, neither history reads nor manual recovery can use it.
+All inbox records, including pending/failed events and media captions/metadata, expire seven days after `received_at`. Outgoing and reaction operation records/tombstones expire thirty days after `created_at`, not after their last retry or update. Status and history tools exclude expired records logically; they do not delete them for retention. Group history checks can still update access/pause state. Once an incoming record expires, neither history reads nor manual recovery can use it.
 
 Group access approvals/epochs persist until changed; group update ID markers expire
 after seven days with activity-driven cleanup. They contain identifiers and access
