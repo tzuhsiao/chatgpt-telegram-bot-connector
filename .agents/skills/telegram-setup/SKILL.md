@@ -28,9 +28,13 @@ New confirmed bot text is also stored separately for seven days and can join
 authorized incoming history via `include_outgoing`; no old Telegram history is
 fetched or reconstructed. Explain this before setup/upgrade consent.
 Link the [retention details](../../../docs/operations.md#retention-privacy-and-maintenance).
-Media intake means type/caption notifications with safe identifiers, not viewing
-or downloading the media. Explain this limit when relevant; do not promise image
-recognition, transcription or outgoing media. See [media intake](../../../docs/media-intake.md).
+Media intake remains a type/caption receipt. [Hybrid retrieval](../../../docs/media-retrieval.md)
+adds a bounded private ten-minute byte cache (physical deletion is activity-driven)
+and supported image tool results. Disclose byte storage before upgrade consent.
+Automatic image reads require the existing private/group responder policy updates;
+verify actual hosted model consumption before claiming recognition. Do not promise
+general binary attachment consumption, transcription or outgoing media. See
+[media intake](../../../docs/media-intake.md).
 Include the optional one-message welcome to the confirmed private chat in setup
 consent; resolve its exact recipient and consent before any send.
 

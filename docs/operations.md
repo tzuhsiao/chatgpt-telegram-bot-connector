@@ -256,7 +256,7 @@ existing plan's key, grouping or quote choice after dispatch or to escape an err
 Emoji text is not a Telegram reaction; any real reaction needs an actually available
 and separately authorized tool. Policy changes do not expand transport authority.
 
-Incoming accepted text and [media notifications](media-intake.md) are persisted before event delivery. Media stores only type, caption and bounded allowlisted identifiers/metadata, not file bytes or interpreted contents. D1 uniqueness and atomic delivery leases coordinate concurrent requests; retries use a stable event ID.
+Incoming accepted text and [media notifications](media-intake.md) are persisted before event delivery. Receipts store only type, caption and bounded allowlisted identifiers/metadata. [Hybrid retrieval](media-retrieval.md) additionally stores a bounded private byte cache with ten-minute logical expiry and activity-driven cleanup; arbitrary binary model consumption is unsupported. D1 uniqueness and atomic delivery leases coordinate concurrent requests; retries use a stable event ID.
 
 The webhook acknowledges a successful callback, a previously completed delivery, or a terminal failure. A transient callback failure retains pending state and returns a failure to Telegram while the automatic attempt budget remains. A duplicate pending update is reconsidered for delivery according to its lease and backoff, rather than being mistaken for success merely because it was persisted.
 
