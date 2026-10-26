@@ -185,7 +185,7 @@ test('additive reaction migration preserves preexisting inbox and send idempoten
   assert.deepEqual(db.sqlite.prepare('SELECT * FROM outgoing').get(),before);
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM reaction_operations').get().n,0);
   assert.equal(db.sqlite.prepare("SELECT text FROM inbox WHERE event_id='synthetic-event'").get().text,'Synthetic text');
-  assert.equal(db.sqlite.prepare("SELECT reaction_album FROM inbox WHERE event_id='synthetic-event'").get().reaction_album,0);
-  assert.equal(db.sqlite.prepare("SELECT media_json,reaction_album FROM inbox WHERE event_id='legacy-media'").get().reaction_album,1);
+  assert.equal(db.sqlite.prepare("SELECT reaction_album FROM inbox WHERE event_id='synthetic-event'").get().reaction_album,-1);
+  assert.equal(db.sqlite.prepare("SELECT media_json,reaction_album FROM inbox WHERE event_id='legacy-media'").get().reaction_album,-1);
   assert.equal(db.sqlite.prepare("SELECT media_json FROM inbox WHERE event_id='legacy-media'").get().media_json,'{"type":"photo"}');
 });

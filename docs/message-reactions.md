@@ -59,8 +59,18 @@ no supported unlock or retry tool. Independently authorized text replies can pro
 The additive `0006_message_reactions` migration creates `reaction_operations` and
 its unique active-target index, plus an internal inbox album-presence flag that
 blocks album targets even when an upstream media-group ID fails sanitization.
-Legacy media rows lack reliable raw album presence, so the migration blocks their
-reactions until seven-day expiry; text reactions and existing image reads still work.
+The schema-only migration gives existing rows the sentinel `reaction_album=-1`;
+new ingestion explicitly writes `0` (no album field) or `1` (album field present,
+even if malformed). Legacy media rows lack reliable raw album presence, so their
+reactions remain blocked until seven-day expiry. Legacy text remains eligible;
+all new album targets remain blocked, including text carrying an album field.
+Image reads are unchanged. This uses SQLite's added-column default without any
+`UPDATE` backfill, as required by hosted Sites migrations. See
+[SQLite ADD COLUMN](https://www.sqlite.org/lang_altertable.html#alter_table_add_column).
+This corrects the unshipped migration before deployment; an already-applied version
+keeps its existing `0`/`1` values, which the gate still accepts with the same meaning.
+There is no supported unchanged deployment route for the data-writing migration;
+do not manually backfill or remove the legacy-media safeguard.
 New incoming standalone media can be reacted to. Build packages it through the existing migration
 journal; no runtime dependency or configuration/webhook change is required. Preserve
 private hosting identity and all existing migrations, send records, task coverage
