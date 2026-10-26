@@ -254,6 +254,18 @@ not wall-clock deletion. Successful keys return their recorded result; conflicti
 arguments fail; uncertain sends require private reconciliation before any newly
 authorized send. There is no upstream exactly-once guarantee.
 
+## Maintenance and instruction design
+
+Write tools, prompts and skills for capable state-of-the-art models: give goals,
+essential constraints, evidence and acceptance, leaving routine judgment to the
+Dot. Avoid exhaustive choreography and repeated instructions. Preserve concrete
+security, authorization, routing and uncertain-operation invariants.
+
+For visible failures use [telegram-maintenance](.agents/skills/telegram-maintenance/SKILL.md).
+Its public-safe diagnostics do not make surrounding status/history output public.
+See [maintenance packaging and acceptance](docs/maintenance.md) before updating the
+existing canonical plugin; publication and hosted checks require their own scope.
+
 ## Development
 
 Use Node.js 24. No runtime dependencies need installation. Run:
