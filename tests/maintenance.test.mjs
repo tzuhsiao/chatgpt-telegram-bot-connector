@@ -43,7 +43,14 @@ test('MCP diagnostics separate invocation, configuration, permission and unknown
   );
   assert.equal(getDiagnostic(internal).category, 'unknown');
   assert.equal(getDiagnostic(internal).retry.safe, true);
-  const serialized = JSON.stringify([invalid, forbidden, config, internal].map(getDiagnostic));
+  // correlation_id is a random UUID (format checked below); it can contain digit
+  // runs like "999" by chance, so exclude it from the private-data scan.
+  const serialized = JSON.stringify(
+    [invalid, forbidden, config, internal].map((result) => {
+      const { correlation_id: _random, ...rest } = getDiagnostic(result);
+      return rest;
+    }),
+  );
   assert.doesNotMatch(
     serialized,
     /10001|999|Synthetic text|frozen-test|owner-test|PRIVATE_EXCEPTION_TOKEN|synthetic-token|connector.example/,
