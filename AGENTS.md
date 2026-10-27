@@ -303,6 +303,10 @@ esbuild only strips types, so `npm run typecheck` is the type gate.
   rows. Types never replace or justify removing existing runtime checks.
 - Avoid `any` and non-null assertions on external data. If a type assertion is
   unavoidable, keep it next to the runtime check that justifies it.
+- Exception for extraction only: existing code that walks raw Telegram JSON may
+  use the `UntypedJson` alias from `worker/untyped.ts` (an explicit `any`) so a
+  move stays behavior-identical. It signals "no type guarantee"; never use it in
+  new code, and replace it with `unknown` plus narrowing when that code changes.
 
 Tests use real SQLite-backed D1 fixtures and synthetic network responses. CI runs
 these checks without deployment or production secrets. Inspect the final diff and
