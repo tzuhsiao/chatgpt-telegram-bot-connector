@@ -17,7 +17,7 @@ export interface CallbackSubscription {
 // so a revocation observed at that point still prevents the request.
 export async function sendCallback(
   subscription: CallbackSubscription,
-  payload: { eventId?: unknown },
+  payload: Record<string, unknown>,
   env: Env,
   runtime: Runtime,
   guard?: (() => Promise<unknown>) | null,
