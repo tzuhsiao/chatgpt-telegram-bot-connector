@@ -1,7 +1,7 @@
 import { observedGroups, securityConfigured, senderAllowed } from './access.ts';
 import { equalSecret } from './crypto.ts';
 import { first, requireDatabase, run } from './db.ts';
-import { deliverEvent } from './delivery.ts';
+import { cancellationKey, deliverEvent } from './delivery.ts';
 import type { Env, Runtime } from './env.ts';
 import { AppError } from './errors.ts';
 import {
@@ -66,6 +66,21 @@ export async function telegramWebhook(
     }
     const message = normalizedUpdate(payload, env, runtime.now());
     if (!message) return json({ ok: true, ignored: true });
+    // Admission begins at this durable snapshot. A pause observed here, or any
+    // cancellation generation crossed before INSERT, makes this receipt terminal.
+    const cancellation = await first(
+      requireDatabase(env),
+      'SELECT value FROM connector_meta WHERE key=?',
+      cancellationKey(message.chat_id),
+    );
+    const observed = cancellation?.value;
+    if (
+      cancellation &&
+      (typeof observed !== 'string' || !/^(paused|active):[0-9a-f-]{36}$/.test(observed))
+    )
+      throw new AppError('Stored cancellation state is invalid.', 503, -32603);
+    const admissionMarker = typeof observed === 'string' ? observed : '';
+    const admissionPaused = admissionMarker.startsWith('paused:') ? 1 : 0;
     let group = null;
     if (groupId(message.chat_id)) {
       try {
@@ -100,8 +115,11 @@ export async function telegramWebhook(
     await run(
       // cleanup() above already required the database binding.
       env.DB as D1Database,
-      `INSERT INTO inbox(event_id,bot_id,update_id,chat_id,sender_id,message_id,text,occurred_at,received_at,group_revision,message_thread_id,media_json,reaction_album)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(bot_id,update_id) DO NOTHING`,
+      `INSERT INTO inbox(event_id,bot_id,update_id,chat_id,sender_id,message_id,text,occurred_at,received_at,group_revision,message_thread_id,media_json,reaction_album,state,last_error)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,
+      CASE WHEN ?=1 OR COALESCE((SELECT value FROM connector_meta WHERE key=?),'')<>? THEN 'failed' ELSE 'pending' END,
+      CASE WHEN ?=1 OR COALESCE((SELECT value FROM connector_meta WHERE key=?),'')<>? THEN 'subscription_cancelled' ELSE NULL END)
+      ON CONFLICT(bot_id,update_id) DO NOTHING`,
       eventId,
       message.bot_id,
       message.update_id,
@@ -115,6 +133,12 @@ export async function telegramWebhook(
       thread,
       message.media_json,
       message.reaction_album,
+      admissionPaused,
+      cancellationKey(message.chat_id),
+      admissionMarker,
+      admissionPaused,
+      cancellationKey(message.chat_id),
+      admissionMarker,
     );
     const result = await deliverEvent(eventId, env, runtime, false, group);
     // Receipt is already attempted. Never await downloads or let failures affect intake.
@@ -122,7 +146,11 @@ export async function telegramWebhook(
       if (typeof ctx?.waitUntil === 'function')
         ctx.waitUntil(prefetchMedia(eventId, env, runtime, group).catch(() => {}));
     } catch {} // Scheduling is also best effort.
-    if (result.state === 'pending' && result.reason !== 'retry_limit')
+    if (
+      result.state === 'pending' &&
+      result.reason !== 'retry_limit' &&
+      result.reason !== 'no_subscription'
+    )
       return json({ ok: false, retry: true }, 503, { 'retry-after': '5' });
     return json({ ok: true });
   } catch (error) {

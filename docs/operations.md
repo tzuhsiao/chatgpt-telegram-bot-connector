@@ -260,18 +260,52 @@ and separately authorized tool. Policy changes do not expand transport authority
 
 Incoming accepted text and [media notifications](media-intake.md) are persisted before event delivery. Receipts store only type, caption and bounded allowlisted identifiers/metadata. [Hybrid retrieval](media-retrieval.md) additionally stores a bounded private byte cache with ten-minute logical expiry and activity-driven cleanup; arbitrary binary model consumption is unsupported. D1 uniqueness and atomic delivery leases coordinate concurrent requests; retries use a stable event ID.
 
-The webhook acknowledges a successful callback, a previously completed delivery, or a terminal failure. A transient callback failure retains pending state and returns a failure to Telegram while the automatic attempt budget remains. A duplicate pending update is reconsidered for delivery according to its lease and backoff, rather than being mistaken for success merely because it was persisted.
+The webhook acknowledges a successful callback, a previously completed delivery, a terminal failure, or a reliably persisted pending event without an active subscription. That last ACK stops Telegram's retry pressure while retaining the receipt for internal recovery; it does not mean the ChatGPT callback was accepted or the dot ran. Authentication/envelope failures and failed storage are not turned into success. An authenticated message with invalid date or text length is acknowledged as ignored without an inbox insert.
+
+A transient callback failure retains pending state and returns a failure to Telegram while the automatic attempt budget remains. A duplicate pending update is reconsidered for delivery according to its lease and backoff, rather than being mistaken for success merely because it was persisted.
 
 After eight failed callback attempts, the record remains `pending` with `last_error` set to `retry_limit`. Automatic webhook requests stop further callback attempts and acknowledge Telegram. This acknowledgement deliberately stops the automatic retry loop; it does **not** mean the callback was delivered. The owner can explicitly recover the event with `retry_pending_events`, retaining its stable event ID.
 
 Redirects and nonretryable callback client errors are terminal instead of recoverable pending state. An event already bound to one subscription identity cannot migrate to a different subscription; a replacement subscriber cannot take over that pending event. Subscription revision checks prevent a stale callback failure from disabling a renewed subscription.
 
-Telegram's own retries are also finite. The MVP has no durable scheduled drainer and makes no eventual-delivery claim based on `waitUntil()`. If Telegram stops retrying, or automatic delivery is exhausted:
+Successful subscription creation or renewal schedules one best-effort recovery batch through the request's `waitUntil()` context, without waiting for callbacks in the subscription response. It selects at most ten eligible pending events for that exact chat: unexpired, fewer than eight attempts, no active lease, and backoff already due. It does not reset backoff or use the manual-recovery override. Event dispatch still checks sender access, subscriber identity, subscription revision and group epoch/topic. Starting further events stops after sixteen seconds; an in-flight callback can take up to its own timeout plus storage/guard work. This is not a hard completion deadline or a strict chat-wide ordering guarantee.
+
+There is no recurring drainer or self-renewal timer. The host must successfully call the authenticated subscription endpoint; returning `refreshBefore` does not prove the host will renew. If more than ten events remain, a callback fails, scheduling is absent/rejected, or background execution stops, a later successful renewal or explicit owner recovery is needed. A different new Telegram message does not drain the whole backlog. Telegram's own retries are finite and `waitUntil()` does not guarantee eventual delivery.
+
+Explicit unsubscribe atomically disables the matched subscription, ends all existing pending events for that chat with `subscription_cancelled`, and starts a new paused cancellation generation. A valid message snapshots that generation before group/network work; INSERT atomically makes it terminal if the snapshot was paused or a cancellation generation changed meanwhile. Successful subscription atomically marks that same generation active. This prevents a delayed admission from becoming replayable merely because subscription recovery finished first. Neither the same callback nor a replacement callback revives those terminal records.
+
+The admission boundary is its first D1 cancellation snapshot, not Telegram's message date or HTTP arrival time: a request whose first admission snapshot is after resubscription is new. Already dispatched callbacks cannot be withdrawn. Legacy unsubscribes cannot be distinguished retrospectively from other disabled subscriptions; cancellation intent is recorded only by this version's explicit unsubscribe. Terminal canceled records cannot be revived with `retry_pending_events`.
+
+Natural expiry and temporary callback failure retain eligible pending events instead. A callback 401/403/410 disables its subscription and terminalizes that particular event; it does not write an explicit-cancellation marker. Use the status and explicit recovery path if delivery does not resume:
 
 1. Invoke the owner-only `get_connector_status` and inspect pending/error status without exporting secrets or message contents.
 2. Fix the cause: for example, restore a valid subscription, renew expired credentials, or correct the exact trusted callback origin. Do not loosen origin or identity checks as a recovery shortcut.
 3. Call `retry_pending_events`, optionally scoped to an allowlisted `chat_id`. Its `limit` defaults to 5 and accepts 1-10 records. This is an explicit recovery action and can retry exhausted automatic deliveries.
 4. Recheck status. Recover additional batches only after understanding continuing errors.
+
+### Telegram delivery sources and context
+
+Issue [#28](https://github.com/tzuhsiao/chatgpt-telegram-bot-connector/issues/28)
+was a source-review finding, not a recorded production incident. The change removes
+an unproductive no-subscription retry loop; it does not claim that one failed
+update permanently deadlocks every chat.
+
+- [Getting updates](https://core.telegram.org/bots/api#getting-updates):
+  Telegram retains undelivered upstream updates for at most 24 hours. The
+  connector's seven-day inbox window applies only after local persistence.
+- [setWebhook](https://core.telegram.org/bots/api#setwebhook): non-2xx responses
+  trigger finite retries; `max_connections` bounds simultaneous connections.
+  This connector uses one connection, without changing that setting in this fix.
+- [tdlib #211](https://github.com/tdlib/telegram-bot-api/issues/211):
+  maintainers describe finite retries, a webhook timeout, and chat-local
+  effects. Historical discussion is context, not a current retry schedule/SLA.
+- [tdlib #75, maintainer comment](https://github.com/tdlib/telegram-bot-api/issues/75#issuecomment-755436496):
+  same-chat updates are successive and asynchronous network handling is
+  recommended. This does not establish permanent cross-chat blocking.
+- [tdlib #126](https://github.com/tdlib/telegram-bot-api/issues/126):
+  stable update IDs support deduplication, while arbitrary outgoing method calls
+  do not gain upstream idempotence. Callback recipients must also deduplicate
+  stable event IDs when an acknowledgement is lost.
 
 `get_connector_status` exposes configuration booleans, owner-only `allowed_chat_ids`, the origin-only `requested_callback_origin`, and counts for `active_subscriptions`, `pending_deliveries`, `retry_exhausted_deliveries`, `failed_deliveries`, `uncertain_sends`, and `uncertain_reactions` (uncertain or stale-applying reaction metadata). It must not disclose the bot token, webhook secret, full callback URLs, paths, queries, signing keys, or message text. Treat allowed chat IDs and the requested origin as private when sharing diagnostics. A recorded requested origin is a candidate for operator review, not an automatically approved destination.
 
@@ -323,7 +357,7 @@ forwarded to the host or visible in Telegram.
 Physical cleanup runs opportunistically on authenticated valid-ID Telegram webhooks
 and mutating owner calls to `send_message`, `configure_telegram_webhook`, or
 `retry_pending_events`. It does not run on read-only tools, page/status requests,
-identity checks or subscription operations. There is no scheduled cleanup; an idle
+identity checks or subscription operations (bounded recovery logically excludes expired rows without deleting them). Explicit cancellation generations persist until superseded. There is no scheduled cleanup; an idle
 deployment may retain expired records longer. These windows do not promise physical
 deletion at a particular time or purge every other category of operational state.
 

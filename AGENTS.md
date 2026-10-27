@@ -149,9 +149,14 @@ Setup, delivery settings and recovery: [group chat](docs/group-chat.md),
 
 ## Delivery semantics
 
-Messages persist before callbacks. Automatic callback retries stop after eight
-attempts; pending records then need explicit owner recovery, and there is no
-scheduled drainer. Inbox records expire after seven days and outgoing operation
+Messages persist before callbacks; persisted no-subscription events are acknowledged
+to Telegram and remain pending. Successful subscription creation/renewal schedules
+at most ten eligible events with backoff, lease and budget guards, stopping new
+attempts after sixteen seconds. Background execution is best effort, not a durable
+scheduled drainer or a host-renewal guarantee. Explicit unsubscribe ends pending
+backlog and records a cancellation boundary; canceled-period history is terminal.
+Automatic callback retries stop after eight attempts; exhausted pending records
+need explicit owner recovery. Inbox records expire after seven days and outgoing operation
 records after thirty, with opportunistic cleanup. A successful key replays its
 recorded result, conflicting arguments fail, and there is no upstream exactly-once
 guarantee. Background: [design](docs/design.md), [operations](docs/operations.md).

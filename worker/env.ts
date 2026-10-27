@@ -18,3 +18,7 @@ export interface Runtime {
   fetch: typeof fetch;
   now: () => number;
 }
+
+export interface BackgroundContext {
+  waitUntil?: (promise: Promise<unknown>) => void;
+}

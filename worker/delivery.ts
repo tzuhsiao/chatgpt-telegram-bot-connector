@@ -1,10 +1,11 @@
 import { requireChat, senderAllowed } from './access.ts';
 import { sendCallback } from './callback.ts';
-import { EVENT } from './constants.ts';
+import { DAY, EVENT } from './constants.ts';
 import { first, requireDatabase, rows, run } from './db.ts';
 import type { Env, Runtime } from './env.ts';
 import { AppError } from './errors.ts';
 import { checkGroup, groupCurrent } from './groups.ts';
+import type { GroupSnapshot } from './groups.ts';
 import { botId } from './telegram.ts';
 import { validThread } from './threads.ts';
 import type { UntypedJson } from './untyped.ts';
@@ -28,6 +29,19 @@ export async function deliverEvent(
   const record: UntypedJson = await first(db, 'SELECT * FROM inbox WHERE event_id=?', eventId);
   if (!record) return { state: 'missing' };
   if (record.state !== 'pending') return { state: record.state };
+  const receivedAt: unknown = record.received_at;
+  if (
+    typeof receivedAt !== 'number' ||
+    !Number.isSafeInteger(receivedAt) ||
+    receivedAt < now - 7 * DAY
+  ) {
+    await run(
+      db,
+      "UPDATE inbox SET state='failed',last_error='expired' WHERE event_id=? AND state='pending'",
+      eventId,
+    );
+    return { state: 'failed' };
+  }
   if (record.attempts >= 8 && !manual) return { state: 'pending', reason: 'retry_limit' };
   if (record.bot_id !== botId(env) || !senderAllowed(record.chat_id, record.sender_id, env)) {
     await run(
@@ -178,6 +192,39 @@ export async function deliverEvent(
     state: terminal ? 'failed' : 'pending',
     reason: !terminal && exhausted ? 'retry_limit' : errorCode,
   };
+}
+
+// Only explicit unsubscribe starts a generation; callback rejection is distinct.
+export const cancellationKey = (chat: string): string => 'subscription_cancelled:' + chat;
+
+// Best-effort automatic recovery, not manual recovery: never reset backoff or
+// override the eight-attempt budget. The existing claim and epoch guards decide
+// each dispatch again. A later renewal or explicit recovery handles leftovers.
+export async function drainPending(
+  chat: string,
+  env: Env,
+  runtime: Runtime,
+  group: GroupSnapshot | null = null,
+): Promise<void> {
+  requireChat(chat, env);
+  const now = runtime.now();
+  const pending = await rows(
+    requireDatabase(env),
+    `SELECT event_id FROM inbox
+    WHERE state='pending' AND bot_id=? AND chat_id=? AND received_at>=?
+    AND attempts<8 AND lease_until<=? AND next_attempt_at<=?
+    ORDER BY received_at,update_id LIMIT 10`,
+    botId(env),
+    chat,
+    now - 7 * DAY,
+    now,
+    now,
+  );
+  for (const event of pending) {
+    if (runtime.now() >= now + 16000) break;
+    if (typeof event.event_id !== 'string') throw new Error('Invalid retained event identity.');
+    await deliverEvent(event.event_id, env, runtime, false, group);
+  }
 }
 
 // `args` are MCP tool arguments, shape-checked by objectArgs on the first line.

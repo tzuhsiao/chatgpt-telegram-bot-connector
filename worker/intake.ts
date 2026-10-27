@@ -115,46 +115,64 @@ export function normalizedMedia(message: UntypedJson): NormalizedMedia {
   return media;
 }
 
-export function normalizedUpdate(update: UntypedJson, env: Env, now: number) {
-  if (!update || !Number.isSafeInteger(update.update_id) || update.update_id < 0)
-    throw new AppError('Invalid Telegram update.');
-  const message = update.message;
-  if (!message || typeof message !== 'object' || Array.isArray(message) || serviceMessage(message))
-    return null;
+function inputRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+export function normalizedUpdate(raw: unknown, env: Env, now: number) {
+  const update = inputRecord(raw);
   if (
-    !['private', 'group', 'supergroup'].includes(message.chat?.type) ||
-    message.from?.is_bot !== false ||
+    !update ||
+    typeof update.update_id !== 'number' ||
+    !Number.isSafeInteger(update.update_id) ||
+    update.update_id < 0
+  )
+    throw new AppError('Invalid Telegram update.');
+  const message = inputRecord(update.message);
+  if (!message || serviceMessage(message)) return null;
+  const chatInfo = inputRecord(message.chat),
+    from = inputRecord(message.from);
+  if (
+    !chatInfo ||
+    typeof chatInfo.type !== 'string' ||
+    !['private', 'group', 'supergroup'].includes(chatInfo.type) ||
+    !from ||
+    from.is_bot !== false ||
     message.sender_chat
   )
     return null;
-  const chat = String(message.chat?.id),
-    sender = String(message.from?.id);
+  const chat = String(chatInfo.id),
+    sender = String(from.id);
   if (
-    !Number.isSafeInteger(message.chat?.id) ||
-    !Number.isSafeInteger(message.from?.id) ||
+    !Number.isSafeInteger(chatInfo.id) ||
+    !Number.isSafeInteger(from.id) ||
     (!numericId(chat) && !groupId(chat)) ||
     !numericId(sender)
   )
     return null;
-  if ((message.chat.type === 'private') !== numericId(chat) || !senderAllowed(chat, sender, env))
+  if ((chatInfo.type === 'private') !== numericId(chat) || !senderAllowed(chat, sender, env))
     return null;
   if (!groupId(chat) && message.is_topic_message === true) return null;
   if (
+    typeof message.message_id !== 'number' ||
     !Number.isSafeInteger(message.message_id) ||
     message.message_id <= 0 ||
+    typeof message.date !== 'number' ||
     !Number.isSafeInteger(message.date) ||
     message.date <= 0 ||
     message.date * 1000 > now + 300000
   )
-    throw new AppError('Invalid Telegram message.');
+    return null;
   if (message.date * 1000 < now - 7 * DAY) return null;
-  const media = typeof message.text === 'string' ? null : normalizedMedia(message);
-  let text = message.text;
-  if (typeof text === 'string') {
-    if (!text.length || [...text].length > 4096) throw new AppError('Invalid message length.');
+  let media: NormalizedMedia | null = null;
+  let text: string;
+  if (typeof message.text === 'string') {
+    if (!message.text.length || [...message.text].length > 4096) return null;
+    text = message.text;
   } else {
-    // Non-text branch: media was computed above, so it is never null here.
-    text = `[Telegram ${media!.type === 'unknown' ? 'unknown content' : media!.type} message]${media!.caption ? '\n' + media!.caption : ''}`;
+    media = normalizedMedia(message);
+    text = `[Telegram ${media.type === 'unknown' ? 'unknown content' : media.type} message]${media.caption ? '\n' + media.caption : ''}`;
   }
   return {
     bot_id: botId(env),
