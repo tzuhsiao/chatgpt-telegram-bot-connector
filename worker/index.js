@@ -1,3 +1,20 @@
+import {
+  allowlist,
+  callerId,
+  groupConfig,
+  observedGroups,
+  requireChat,
+  requireOwner,
+  securityConfigured,
+  senderAllowed,
+} from './access.ts';
+import { callbackUrl, safeUrl } from './callback-url.ts';
+import { digest, equalSecret, signature, signingKey } from './crypto.ts';
+import { first, requireDatabase, rows, run } from './db.ts';
+import { AppError } from './errors.ts';
+import { MAX_BODY, json, readJson } from './http.ts';
+import { groupId, numericId, objectArgs } from './validate.ts';
+
 const PROTOCOL = '2026-07-28';
 // Replaced by the build with a digest of public source inputs, never runtime settings.
 const PUBLIC_SOURCE_VERSION = 'unbuilt'; // PUBLIC_SOURCE_VERSION
@@ -7,7 +24,6 @@ const MAINTENANCE_HINT =
   ' For unexpected failures use the telegram-maintenance skill; diagnostics are evidence, not authorization. If absent, read ' +
   MAINTENANCE_SKILL +
   '.';
-const MAX_BODY = 64 * 1024;
 const EMPTY_SCHEMA = { type: 'object', properties: {}, additionalProperties: false };
 const EVENT = 'telegram.message.received';
 const DAY = 86400000;
@@ -162,13 +178,6 @@ const MEDIA_SCHEMA = {
   additionalProperties: false,
 };
 
-class AppError extends Error {
-  constructor(message, status = 400, code = -32602, reason) {
-    super(message);
-    Object.assign(this, { status, code, reason });
-  }
-}
-
 // Only fixed vocabulary and random per-request IDs enter this public-safe envelope.
 // It intentionally excludes arguments, hashes of private data, upstream text and env.
 function diagnostic(error, method, name, correlationId, outcome, dispatched = true) {
@@ -294,51 +303,6 @@ function diagnostic(error, method, name, correlationId, outcome, dispatched = tr
   };
 }
 
-function json(data, status = 200, headers = {}) {
-  return Response.json(data, {
-    status,
-    headers: {
-      'cache-control': 'private, no-store',
-      'x-content-type-options': 'nosniff',
-      ...headers,
-    },
-  });
-}
-
-async function readJson(request, limit = MAX_BODY) {
-  const declared = request.headers.get('content-length');
-  if (declared && Number(declared) > limit) throw new AppError('Request body too large.', 413);
-  const reader = request.body?.getReader();
-  if (!reader) throw new AppError('Invalid JSON.', 400, -32700);
-  const chunks = [];
-  let length = 0;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    length += value.byteLength;
-    if (length > limit) {
-      await reader.cancel();
-      throw new AppError('Request body too large.', 413);
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
-  }
-  try {
-    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-  } catch {
-    throw new AppError('Invalid JSON.', 400, -32700);
-  }
-}
-
-function callerId(request) {
-  return request.headers.get('oai-authenticated-user-id') || null;
-}
-
 // Disabled by default. Log event RPC shapes and error categories without
 // persisting callback URLs, filters, identities, or signing credentials.
 function eventDiagnostic(env, method, phase, request, params, error, correlationId, dispatched) {
@@ -386,216 +350,12 @@ function eventDiagnostic(env, method, phase, request, params, error, correlation
   );
 }
 
-function requireOwner(request, env) {
-  const id = callerId(request);
-  if (!id) throw new AppError('Authentication required.', 401, -32001);
-  if (!env.OWNER_USER_ID) throw new AppError('Owner configuration is required.', 503, -32002);
-  if (id !== env.OWNER_USER_ID) throw new AppError('Owner access required.', 403, -32001);
-  return id;
-}
-
 function toolResult(data) {
   return {
     content: [{ type: 'text', text: JSON.stringify(data) }],
     structuredContent: data,
     isError: false,
   };
-}
-
-function objectArgs(value, permitted, required = []) {
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    Object.keys(value).some((key) => !permitted.includes(key)) ||
-    required.some((key) => value[key] === undefined)
-  )
-    throw new AppError('Invalid arguments.');
-  return value;
-}
-
-function numericId(value) {
-  return (
-    typeof value === 'string' && /^[1-9][0-9]*$/.test(value) && Number.isSafeInteger(Number(value))
-  );
-}
-
-function allowlist(value) {
-  if (!value) return new Set();
-  const entries = String(value)
-    .split(',')
-    .map((value) => value.trim());
-  if (entries.some((value) => !numericId(value)))
-    throw new AppError('Invalid allowlist configuration.', 503, -32002);
-  return new Set(entries);
-}
-
-function requireChat(chat, env) {
-  if (groupId(chat) && groupConfig(env).has(chat)) return chat;
-  if (!numericId(chat) || !allowlist(env.TELEGRAM_ALLOWED_CHAT_IDS).has(chat))
-    throw new AppError('Chat is not allowed.', 403, -32001);
-  return chat;
-}
-
-function groupId(value) {
-  return (
-    typeof value === 'string' && /^-[1-9][0-9]*$/.test(value) && Number.isSafeInteger(Number(value))
-  );
-}
-
-// Separate group/participant approvals never grant access to a human's private chat.
-function groupConfig(env) {
-  if (!env.TELEGRAM_ALLOWED_GROUPS) return new Map();
-  let value;
-  try {
-    value = JSON.parse(env.TELEGRAM_ALLOWED_GROUPS);
-  } catch {
-    throw new AppError('Invalid group configuration.', 503, -32002);
-  }
-  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length > 10)
-    throw new AppError('Invalid group configuration.', 503, -32002);
-  const result = new Map();
-  for (const [chat, humans] of Object.entries(value)) {
-    if (
-      !groupId(chat) ||
-      !Array.isArray(humans) ||
-      humans.length !== 2 ||
-      humans.some((id) => !numericId(id)) ||
-      new Set(humans).size !== 2
-    )
-      throw new AppError('Invalid group configuration.', 503, -32002);
-    result.set(chat, [...humans].sort());
-  }
-  return result;
-}
-
-function observedGroups(env) {
-  try {
-    return { groups: groupConfig(env), error: null };
-  } catch {
-    return { groups: new Map(), error: 'invalid_group_config' };
-  }
-}
-
-function securityConfigured(env) {
-  return (
-    !!env.OWNER_USER_ID &&
-    ((allowlist(env.TELEGRAM_ALLOWED_USER_IDS).size > 0 &&
-      allowlist(env.TELEGRAM_ALLOWED_CHAT_IDS).size > 0) ||
-      observedGroups(env).groups.size > 0)
-  );
-}
-
-function senderAllowed(chat, sender, env) {
-  if (groupId(chat)) return observedGroups(env).groups.get(chat)?.includes(sender) === true;
-  return (
-    chat === sender &&
-    allowlist(env.TELEGRAM_ALLOWED_CHAT_IDS).has(chat) &&
-    allowlist(env.TELEGRAM_ALLOWED_USER_IDS).has(sender)
-  );
-}
-
-function requireDatabase(env) {
-  if (!env.DB) throw new AppError('Database configuration is required.', 503, -32002);
-  return env.DB;
-}
-
-const first = (db, sql, ...args) =>
-  db
-    .prepare(sql)
-    .bind(...args)
-    .first();
-const run = (db, sql, ...args) =>
-  db
-    .prepare(sql)
-    .bind(...args)
-    .run();
-const rows = async (db, sql, ...args) =>
-  (
-    await db
-      .prepare(sql)
-      .bind(...args)
-      .all()
-  ).results;
-
-async function digest(text) {
-  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(bytes)].map((value) => value.toString(16).padStart(2, '0')).join('');
-}
-
-async function equalSecret(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const [left, right] = await Promise.all([digest(a), digest(b)]);
-  let difference = 0;
-  for (let i = 0; i < left.length; i++) difference |= left.charCodeAt(i) ^ right.charCodeAt(i);
-  return difference === 0;
-}
-
-function signingKey(secret) {
-  if (typeof secret !== 'string' || !/^whsec_[A-Za-z0-9+/]+={0,2}$/.test(secret))
-    throw new AppError('Invalid signing secret.');
-  let bytes;
-  try {
-    bytes = Uint8Array.from(atob(secret.slice(6)), (value) => value.charCodeAt(0));
-  } catch {
-    throw new AppError('Invalid signing secret.');
-  }
-  if (bytes.length < 24 || bytes.length > 64) throw new AppError('Invalid signing secret.');
-  return bytes;
-}
-
-function safeUrl(value) {
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new AppError('Invalid callback URL.');
-  }
-  const host = url.hostname.toLowerCase();
-  if (
-    url.protocol !== 'https:' ||
-    url.username ||
-    url.password ||
-    url.hash ||
-    url.port ||
-    !host.includes('.') ||
-    host.endsWith('.') ||
-    /^[\d.]+$/.test(host) ||
-    host.includes(':') ||
-    host.startsWith('[')
-  )
-    throw new AppError('Invalid callback URL.');
-  return url;
-}
-
-function callbackUrl(value, env) {
-  const url = safeUrl(value);
-  const allowed = String(env.MCP_CALLBACK_ORIGINS || '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (!allowed.includes(url.origin))
-    throw new AppError(
-      'Callback origin is not configured. Review the requested origin in owner-only connector status.',
-      200,
-      -32602,
-      'callback_origin_not_allowed',
-    );
-  return url.href;
-}
-
-async function signature(secret, id, timestamp, body) {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    signingKey(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const bytes = new Uint8Array(
-    await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${timestamp}.${body}`)),
-  );
-  return 'v1,' + btoa(String.fromCharCode(...bytes));
 }
 
 async function sendCallback(subscription, payload, env, runtime, guard) {
