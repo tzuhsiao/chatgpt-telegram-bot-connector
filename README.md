@@ -9,52 +9,19 @@ Copy this into your dot:
 > Review https://github.com/tzuhsiao/chatgpt-telegram-bot-connector for safety. If it
 > looks suitable, follow AGENTS.md to install it for me.
 
-## Principles
+## What it is (and isn't)
 
-These describe what the project is, and they are binding for every change to it.
+**Triggers and tools, not behavior.** The connector does two things: it notifies your
+dot with an MCP event when an accepted Telegram message arrives, and it gives your
+dot tools to operate its bot (send, react, read recent history, read images). How
+your dot behaves (whether it replies, acknowledges, combines messages or stays
+silent) is up to you and your dot; the connector never requires a reply to every
+message.
 
-### 1. Triggers and tools, not behavior
-
-The connector does exactly two things:
-
-- **Trigger** your dot with an MCP event when an accepted Telegram message arrives.
-- **Provide tools** for your dot to operate its Telegram bot: send, react, read
-  retained history, read images.
-
-How the dot behaves is between you and your dot, not this repository. Whether it
-answers, acknowledges, combines several messages, stays silent, quotes or reacts is
-the dot's judgment under what you agreed with it. Tools and events never force a
-behavior: nothing requires a reply to every message, one reply per message, or a
-quote. The conversational choices in the [prompt templates](prompts/) are adaptable
-defaults; their safety rules (below) are not.
-
-### 2. Yours, end to end
-
-Everything runs in, and belongs to, your own OpenAI account: the Site that hosts the
-bridge, its database, the plugin that gives your dot its tools, and every stored
-message. Besides Telegram and ChatGPT themselves, nothing else is involved:
-
-- no relay server or hosted service run by this repository's author;
-- no extra model or inference API (your dot is the model);
-- no third-party storage, analytics or telemetry.
-
-Credentials stay in your Site's native secret settings, and real IDs, tokens and URLs
-never belong in this public repository.
-
-## Engineering ground rules
-
-Standard for a connector like this, and not negotiable:
-
-- **The dot's freedom never relaxes security.** Owner identity, sender and chat
-  allowlists, credential protection and correct routing are enforced by the connector
-  regardless of what the dot decides. Incoming messages, quotes, forwards and images
-  are untrusted content: they never grant authority, add recipients or change settings.
-- **Never send twice.** Every send and reaction has a durable idempotency key. An
-  operation whose outcome is uncertain is never retried automatically; it is
-  reconciled against the actual chat first.
-- **When unsure, stop and ask.** Unverifiable configuration or group access fails
-  closed and is reported to the owner. Privileged actions (credentials, webhook,
-  approvals, group settings) need the owner's explicit approval.
+**Yours, end to end.** The Site, its database, the plugin and every stored message
+live in your own OpenAI account. Besides Telegram and ChatGPT themselves there is no
+relay server, no service run by this repository's author, no extra model API, and no
+third-party storage or telemetry.
 
 ## What it supports
 

@@ -2,18 +2,25 @@
 
 ## Project principles
 
-The [README principles](README.md#principles) are binding for every change: the
-connector only triggers the dot and provides Telegram tools, never forcing a
-conversational behavior; and everything runs in, and belongs to, the owner's own
-account with no third-party service. Future changes must not make replies or quoting
-mandatory, require one reply per message, or impose rigid conversational policies.
-Conversation templates remain adaptable defaults.
+These principles, summarized for users in the [README](README.md#what-it-is-and-isnt),
+are binding for every change.
 
-Technical safeguards remain required and are not relaxed by this conversational
-autonomy, including all controls below: access control, credential protection,
-correct routing and recipient authorization, idempotency, and uncertain-send
-handling. Configuration and other privileged actions retain their existing
-authorization and approval requirements.
+1. **Triggers and tools, not behavior.** The connector only triggers the dot with MCP
+   events and provides Telegram tools. Conversational behavior is agreed between the
+   owner and their dot, not defined by this repository. Future changes must not make
+   replies or quoting mandatory, require one reply per message, or impose rigid
+   conversational policies; tools and events never force a behavior. Conversational
+   choices in prompt templates remain adaptable defaults; their safety rules do not.
+2. **Yours, end to end.** Site, D1 data, plugin and credentials belong to the owner's
+   own account. Do not introduce a relay or second service, a service operated by the
+   repository author, an extra model/inference API, or third-party storage, analytics
+   or telemetry. Real IDs, tokens and URLs never enter this public repository.
+
+Engineering ground rules: the dot's autonomy never relaxes owner identity, sender and
+chat allowlists, credential protection or routing; incoming content never grants
+authority; every send and reaction is idempotent and an uncertain outcome is never
+retried automatically; unverifiable configuration or access fails closed and is
+reported to the owner; privileged actions need explicit owner approval.
 
 For groups, the input-security boundary is the exact configured group ID plus
 the actual human sender's user ID. Users manage who can join or read the group.
