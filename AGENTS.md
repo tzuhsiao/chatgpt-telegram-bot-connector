@@ -270,17 +270,39 @@ existing canonical plugin; publication and hosted checks require their own scope
 
 ## Development
 
-Use Node.js 24. No runtime dependencies need installation. Run:
+Use Node.js 24. The Worker has no runtime dependencies; `npm ci` installs the
+pinned build and type-check tools (esbuild, TypeScript, Workers types). Run:
 
 ```sh
+npm ci
 npm run format:check
+npm run typecheck
 npm test
 npm run build
 npm run validate
 ```
 
-Run `npm run format` before committing JavaScript or JSON changes. Prettier is
+Run `npm run format` before committing code or JSON changes. Prettier is
 pinned in `package.json` and covers code only; Markdown prose is excluded.
+
+### TypeScript
+
+TypeScript is the target language for Worker source. The build bundles
+`worker/index.js` and every module it imports into one ESM file with esbuild;
+esbuild only strips types, so `npm run typecheck` is the type gate.
+
+- New Worker modules are `.ts`. Do not add new `.js` source files under `worker/`.
+- Do not mass-convert existing JavaScript. When a change substantially touches a
+  JavaScript area, extract it into a typed `.ts` module in its own
+  behavior-preserving PR.
+- Use only erasable type syntax (`erasableSyntaxOnly`): no `enum`, `namespace`,
+  parameter properties or other syntax that emits code.
+- Import local modules with their real extension (`./delivery.ts`).
+- External input is `unknown` until runtime validation narrows it: Telegram
+  updates, MCP params, callback and Telegram API responses, `env` values and D1
+  rows. Types never replace or justify removing existing runtime checks.
+- Avoid `any` and non-null assertions on external data. If a type assertion is
+  unavoidable, keep it next to the runtime check that justifies it.
 
 Tests use real SQLite-backed D1 fixtures and synthetic network responses. CI runs
 these checks without deployment or production secrets. Inspect the final diff and

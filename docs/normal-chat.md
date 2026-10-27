@@ -135,7 +135,7 @@ Record actual hosted observations privately; use synthetic examples publicly.
 | Reaction request | Use the available `set_message_reaction` only under exact-chat reaction authorization; preserve unresolved requests and text reply keys. |
 | Existing quoted plan at cutover | Original arguments/keys retained; no replay under the new unquoted v3 policy. |
 
-Run `npm test`, `npm run build` and `npm run validate` for transport coverage. The
+Run `npm ci`, then `npm test`, `npm run build` and `npm run validate`, for transport coverage. The
 existing send test verifies a payload without reply parameters. Local tests do not
 prove that the host loaded the prompt, retained coverage, serialized overlapping
 runs, ran a model or exercised these conversational choices.
