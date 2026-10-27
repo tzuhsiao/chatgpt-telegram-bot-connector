@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile, cp, access, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { build as esbuild } from 'esbuild';
 import { publicSource } from './public-source.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -23,14 +24,36 @@ if (config.d1 !== 'DB' || !config.capabilities?.includes('mcp'))
 await mkdir(resolve(root, 'dist/server'), { recursive: true });
 await mkdir(resolve(root, 'dist/.openai'), { recursive: true });
 const sourceRecord = await publicSource(root);
-const worker = await readFile(resolve(root, 'worker/index.js'), 'utf8');
-await writeFile(
-  resolve(root, 'dist/server/index.js'),
-  worker.replace(
-    "'unbuilt'; // PUBLIC_SOURCE_VERSION",
-    JSON.stringify(sourceRecord.version) + '; // PUBLIC_SOURCE_VERSION',
-  ),
-);
+// Bundle worker/index.js and any imported .js/.ts modules into one ESM file.
+// esbuild only strips types; `npm run typecheck` is the type gate.
+const entry = resolve(root, 'worker/index.js');
+const placeholder = "'unbuilt'; // PUBLIC_SOURCE_VERSION";
+const stampVersion = {
+  name: 'public-source-version',
+  setup(build) {
+    build.onLoad({ filter: /[\\/]worker[\\/]index\.js$/ }, async (args) => {
+      const contents = await readFile(args.path, 'utf8');
+      if (!contents.includes(placeholder))
+        throw new Error('PUBLIC_SOURCE_VERSION placeholder not found in worker/index.js.');
+      return {
+        contents: contents.replace(placeholder, JSON.stringify(sourceRecord.version) + ';'),
+        loader: 'js',
+      };
+    });
+  },
+};
+await esbuild({
+  entryPoints: [entry],
+  outfile: resolve(root, 'dist/server/index.js'),
+  bundle: true,
+  format: 'esm',
+  platform: 'neutral',
+  target: 'esnext',
+  minify: false,
+  legalComments: 'none',
+  logLevel: 'warning',
+  plugins: [stampVersion],
+});
 await writeFile(
   resolve(root, 'dist/public-source.json'),
   JSON.stringify(sourceRecord, null, 2) + '\n',

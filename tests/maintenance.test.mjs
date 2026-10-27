@@ -216,9 +216,24 @@ test('tool discovery exposes maintenance without changing names or image contrac
 test('public source fingerprints exclude private manifests and change with public runtime inputs', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'maintenance-source-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  for (const name of ['worker', 'drizzle', 'scripts', '.agents'])
+  for (const name of [
+    'worker',
+    'drizzle',
+    'scripts',
+    '.agents',
+    'package-lock.json',
+    'tsconfig.json',
+  ])
     await cp(new URL('../' + name, import.meta.url), join(dir, name), { recursive: true });
   const first = await publicSource(dir);
+  await writeFile(join(dir, 'worker/extra.ts'), 'export const extra: number = 1;\n');
+  assert.notEqual(
+    (await publicSource(dir)).version,
+    first.version,
+    'New Worker modules must change the fingerprint.',
+  );
+  await rm(join(dir, 'worker/extra.ts'));
+  assert.deepEqual(await publicSource(dir), first);
   const original = await readFile(join(dir, 'worker/index.js'), 'utf8');
   await writeFile(join(dir, 'worker/index.js'), original.replaceAll('\n', '\r\n'));
   assert.deepEqual(await publicSource(dir), first);
