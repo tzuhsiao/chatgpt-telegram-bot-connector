@@ -1,6 +1,6 @@
 ---
-name: telegram-setup
-description: Use when a user asks a Dot or agent to install or resume this repository's Telegram Bot, including approved private groups and fresh setup after deleting a prior Site or plugin.
+name: telegram-bot-connector-setup
+description: Use when the owner asks to install, upgrade or resume the Telegram Bot Connector (dedicated Telegram bot, ChatGPT Site and its canonical plugin) for private chats or approved private groups, including fresh setup after deleting a prior Site or plugin.
 ---
 
 # Set up Telegram Bot Connector
@@ -18,8 +18,8 @@ the bridge lets your dot receive the message and reply there. It runs on Sites,
 so your computer does not need to stay on. The Site hosts the bridge and storage;
 the plugin gives your dot the tools to use it."
 
-Explain that incoming text/captions, bounded media metadata/IDs, subscriptions and delivery records live in the
-storage attached to their Site, not a separate server operated by this repository's
+Explain that incoming text/captions, bounded media metadata/IDs, subscriptions and
+their signing credentials, and delivery records live in the storage attached to their Site, not a separate server operated by this repository's
 author. Inbox records expire after seven days; outgoing operation metadata after
 thirty days. Physical cleanup happens with activity and may occur later; other
 state is not promised those windows. The outgoing operation log is not a complete
@@ -58,8 +58,12 @@ bot credentials yet.
 - **Fresh:** only after a complete inventory proves no reusable match, create one
   owner-private Site titled **Telegram Bot Connector**, with `DB` D1 and `mcp`
   capability. Persist its returned ID atomically in the private Site source before
-  further operations. Build, push, save and privately deploy through supported Sites
-  tooling; install the repository migration journal through the supported D1 workflow.
+  further operations. Build with Node.js 24: `npm ci` (installs the pinned esbuild
+  and TypeScript tools; the Worker itself has no runtime dependencies), then
+  `npm run build` and `npm run validate`. Push, save and privately deploy the
+  validated build through supported Sites tooling; install the repository migration
+  journal through the supported D1 workflow. Every later redeploy uses the same
+  `npm ci` → build → validate sequence.
   No operational values belong in public source or artifacts.
   After creation, refresh inventory to `reuse` by correlating the returned Site;
   retain `installation: fresh` only while it is the same proven empty onboarding.
@@ -162,7 +166,7 @@ After the gates pass, complete protected secret assignment and verify the applie
 runtime revision. Obtain explicit approval to connect this bot to this Site.
 Call `configure_telegram_webhook({})` once when registration is needed: it performs
 `getMe`/`getWebhookInfo`, validates the bot, refuses a different webhook and registers
-the fixed Site URL without dropping pending updates. Current MCP has no separate
+the fixed Site URL without dropping pending updates. The connector exposes no
 read-only bot/webhook inspection tool; if independent inspection is unavailable,
 this guarded call is the approved mutation, not a claimed read-only test.
 
@@ -221,19 +225,20 @@ approval for actual native setting changes; never silently change rights, privac
 invites, subscriptions or live membership. Anonymous admins must use real account
 identity for accepted input. Verification alone does not prove incoming delivery.
 
-Deploy reviewed source while preserving existing D1/migrations and private runtime
-identity. This boundary revision needs no new config/schema. If active, pause the
-group before the approved upgrade; keep an existing pause until owner-authorized
-verification. Bot loss/unusable access, API/routing failures, migrations and explicit
+Upgrade by deploying reviewed source while preserving existing D1/migrations and
+private runtime identity; apply only the migrations and settings that release
+actually adds. If active, pause the group before the approved upgrade; keep an
+existing pause until owner-authorized verification. Bot loss/unusable access, API/routing failures, migrations and explicit
 pause/config revocation retain durable epoch/race safeguards. Harmless audience
 changes or rejected messages need no recovery. Pause before approval edits; status
 stays read-only and cannot infer an unobserved remove-and-restore cycle. Drain old
 Worker revisions before re-verification. Old pending/paused text is not backfilled.
 
-Future guarded webhook configuration uses message/my_chat_member for groups;
-legacy chat_member updates remain harmless and no disruptive re-registration is
-needed just for this revision. Keep exactly one existing group-scoped subscription
-and a separate group task, preserving both private responders. The enum-only setup
+Guarded webhook registration requests `message` and `my_chat_member` for group
+installations. Older registrations that also include `chat_member` stay compatible,
+so do not re-register only to change that list. Keep exactly one group-scoped
+subscription and a separate group task, preserving both private responders.
+Configure that task from [the group prompt](../../../prompts/group-chat.md). The enum-only setup
 planner covers personal setup, not group readiness or audience privacy.
 
 For Topics, follow [routing/history](../../../docs/group-topics.md). Preserve each
