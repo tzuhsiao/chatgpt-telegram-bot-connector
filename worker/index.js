@@ -33,7 +33,7 @@ export function createWorker({
       if (path === '/mcp') {
         if (request.method !== 'POST')
           return json({ error: 'Method not allowed.' }, 405, { allow: 'POST' });
-        return mcp(request, env, { fetch: networkFetch, now });
+        return mcp(request, env, { fetch: networkFetch, now }, ctx);
       }
       if (path === '/telegram/webhook') {
         if (request.method !== 'POST')

@@ -194,7 +194,7 @@ test('expired or unsubscribed destinations do not receive messages', async (t) =
     return new Response(null, { status: 204 });
   });
   advance(86400001);
-  assert.equal((await worker.fetch(telegramRequest(), env)).status, 503);
+  assert.equal((await worker.fetch(telegramRequest(), env)).status, 200);
   assert.equal(deliveries, 0);
 });
 

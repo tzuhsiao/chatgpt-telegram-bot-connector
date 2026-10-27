@@ -3,7 +3,7 @@ import { cleanup } from './retention.ts';
 import { configureWebhook } from './webhook-setup.ts';
 import { connectorStatus, recentMessages } from './status.ts';
 import { diagnostic, eventDiagnostic } from './diagnostics.ts';
-import type { Env, Runtime } from './env.ts';
+import type { BackgroundContext, Env, Runtime } from './env.ts';
 import { AppError } from './errors.ts';
 import { EVENT_DEFINITION, eventOperation } from './events.ts';
 import { retryPending } from './delivery.ts';
@@ -55,7 +55,12 @@ export async function ownerTool(name: UntypedJson, args: UntypedJson, env: Env, 
   };
 }
 
-export async function mcp(request: Request, env: Env, runtime: Runtime): Promise<Response> {
+export async function mcp(
+  request: Request,
+  env: Env,
+  runtime: Runtime,
+  ctx?: BackgroundContext,
+): Promise<Response> {
   const correlationId = 'diag_' + crypto.randomUUID();
   let id = null;
   let dispatched = false;
@@ -98,7 +103,7 @@ export async function mcp(request: Request, env: Env, runtime: Runtime): Promise
       const owner = requireOwner(request, env);
       if (method === 'events/subscribe' || method === 'events/unsubscribe') {
         dispatched = true;
-        result = await eventOperation(method, params, owner, env, runtime);
+        result = await eventOperation(method, params, owner, env, runtime, ctx);
       } else if (method === 'tools/call') {
         dispatched = true;
         result = await ownerTool(params?.name, params?.arguments ?? {}, env, runtime);

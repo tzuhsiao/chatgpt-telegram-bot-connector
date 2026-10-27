@@ -1,10 +1,11 @@
 import { requireChat, senderAllowed } from './access.ts';
 import { sendCallback } from './callback.ts';
-import { EVENT } from './constants.ts';
+import { DAY, EVENT } from './constants.ts';
 import { first, requireDatabase, rows, run } from './db.ts';
 import type { Env, Runtime } from './env.ts';
 import { AppError } from './errors.ts';
 import { checkGroup, groupCurrent } from './groups.ts';
+import type { GroupSnapshot } from './groups.ts';
 import { botId } from './telegram.ts';
 import { validThread } from './threads.ts';
 import type { UntypedJson } from './untyped.ts';
@@ -28,6 +29,19 @@ export async function deliverEvent(
   const record: UntypedJson = await first(db, 'SELECT * FROM inbox WHERE event_id=?', eventId);
   if (!record) return { state: 'missing' };
   if (record.state !== 'pending') return { state: record.state };
+  const receivedAt: unknown = record.received_at;
+  if (
+    typeof receivedAt !== 'number' ||
+    !Number.isSafeInteger(receivedAt) ||
+    receivedAt < now - 7 * DAY
+  ) {
+    await run(
+      db,
+      "UPDATE inbox SET state='failed',last_error='expired' WHERE event_id=? AND state='pending'",
+      eventId,
+    );
+    return { state: 'failed' };
+  }
   if (record.attempts >= 8 && !manual) return { state: 'pending', reason: 'retry_limit' };
   if (record.bot_id !== botId(env) || !senderAllowed(record.chat_id, record.sender_id, env)) {
     await run(
@@ -69,6 +83,15 @@ export async function deliverEvent(
     now,
   );
   if (!subscription) return { state: 'pending', reason: 'no_subscription' };
+  const subscriptionId: unknown = subscription.id,
+    revision: unknown = subscription.revision;
+  if (
+    typeof subscriptionId !== 'string' ||
+    typeof revision !== 'number' ||
+    !Number.isSafeInteger(revision) ||
+    revision < 0
+  )
+    throw new AppError('Stored subscription is invalid.', 503, -32603);
   // An already-bound event must never migrate to a different subscribed conversation.
   if (record.subscription_id && record.subscription_id !== subscription.id) {
     await run(
@@ -115,14 +138,45 @@ export async function deliverEvent(
   };
   let status = null,
     errorCode = null;
+  const dispatchStopped = new Error('Delivery authorization changed before dispatch.');
   try {
-    const response = await sendCallback(
-      subscription,
-      payload,
-      env,
-      runtime,
-      group ? () => groupCurrent(group, env) : null,
-    );
+    const response = await sendCallback(subscription, payload, env, runtime, async () => {
+      if (group) await groupCurrent(group, env);
+      if (!senderAllowed(record.chat_id, record.sender_id, env)) throw dispatchStopped;
+      // sendCallback invokes this after every signing await, immediately before
+      // fetch. A claim result held across cancellation/renewal is not authority
+      // to dispatch: recheck the exact live lease and signed subscription.
+      const authorized = await first(
+        db,
+        `SELECT i.lease_until,i.received_at,s.expires_at
+          FROM inbox i JOIN subscriptions s ON s.id=i.subscription_id
+          WHERE i.event_id=? AND i.state='pending' AND i.lease_token=?
+          AND i.bot_id=? AND i.chat_id=s.chat_id
+          AND s.id=? AND s.revision=? AND s.owner_id=? AND s.enabled=1`,
+        eventId,
+        lease,
+        botId(env),
+        subscriptionId,
+        revision,
+        env.OWNER_USER_ID,
+      );
+      // Read the clock after D1 resolves too: the claim or guard read itself
+      // may have been delayed across lease, subscription or receipt expiry.
+      const dispatchNow = runtime.now();
+      if (
+        !authorized ||
+        typeof authorized.lease_until !== 'number' ||
+        !Number.isSafeInteger(authorized.lease_until) ||
+        authorized.lease_until <= dispatchNow ||
+        typeof authorized.expires_at !== 'number' ||
+        !Number.isSafeInteger(authorized.expires_at) ||
+        authorized.expires_at <= dispatchNow ||
+        typeof authorized.received_at !== 'number' ||
+        !Number.isSafeInteger(authorized.received_at) ||
+        authorized.received_at < dispatchNow - 7 * DAY
+      )
+        throw dispatchStopped;
+    });
     status = response.status;
     await response.body?.cancel();
     if (response.ok) {
@@ -138,6 +192,28 @@ export async function deliverEvent(
     }
     errorCode = status >= 300 && status < 400 ? 'redirect' : 'callback_http_error';
   } catch (error) {
+    if (error === dispatchStopped) {
+      const cutoff = runtime.now() - 7 * DAY;
+      // Release only our still-pending lease. Cancellation and a competing claim
+      // own their state; neither can be revived or unlocked by this stale worker.
+      await run(
+        db,
+        `UPDATE inbox SET
+        state=CASE WHEN received_at<? THEN 'failed' ELSE state END,
+        last_error=CASE WHEN received_at<? THEN 'expired' ELSE 'pre_dispatch_changed' END,
+        lease_token=NULL,lease_until=0
+        WHERE event_id=? AND state='pending' AND lease_token=?`,
+        cutoff,
+        cutoff,
+        eventId,
+        lease,
+      );
+      const current = await first(db, 'SELECT state FROM inbox WHERE event_id=?', eventId);
+      return {
+        state: typeof current?.state === 'string' ? current.state : 'missing',
+        reason: 'pre_dispatch_changed',
+      };
+    }
     errorCode = error instanceof AppError ? 'callback_configuration' : 'callback_network_error';
   }
   const terminal = status !== null && status < 500 && status !== 429 && status !== 408;
@@ -178,6 +254,39 @@ export async function deliverEvent(
     state: terminal ? 'failed' : 'pending',
     reason: !terminal && exhausted ? 'retry_limit' : errorCode,
   };
+}
+
+// Only explicit unsubscribe starts a generation; callback rejection is distinct.
+export const cancellationKey = (chat: string): string => 'subscription_cancelled:' + chat;
+
+// Best-effort automatic recovery, not manual recovery: never reset backoff or
+// override the eight-attempt budget. The existing claim and epoch guards decide
+// each dispatch again. A later renewal or explicit recovery handles leftovers.
+export async function drainPending(
+  chat: string,
+  env: Env,
+  runtime: Runtime,
+  group: GroupSnapshot | null = null,
+): Promise<void> {
+  requireChat(chat, env);
+  const now = runtime.now();
+  const pending = await rows(
+    requireDatabase(env),
+    `SELECT event_id FROM inbox
+    WHERE state='pending' AND bot_id=? AND chat_id=? AND received_at>=?
+    AND attempts<8 AND lease_until<=? AND next_attempt_at<=?
+    ORDER BY received_at,update_id LIMIT 10`,
+    botId(env),
+    chat,
+    now - 7 * DAY,
+    now,
+    now,
+  );
+  for (const event of pending) {
+    if (runtime.now() >= now + 16000) break;
+    if (typeof event.event_id !== 'string') throw new Error('Invalid retained event identity.');
+    await deliverEvent(event.event_id, env, runtime, false, group);
+  }
 }
 
 // `args` are MCP tool arguments, shape-checked by objectArgs on the first line.

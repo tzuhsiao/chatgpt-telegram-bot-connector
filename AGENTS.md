@@ -66,7 +66,9 @@ test passing, and a new invariant needs a new test.
 | Callbacks go only to exact allowed HTTPS origins; redirects are never followed | `events`: "callback allowlist blocks SSRF, lookalikes and redirects…" |
 | A subscription is stored only after its signed challenge succeeds; one subscriber per chat | `events`: "subscription verifies its signed callback…", "a different callback cannot silently replace…" |
 | Concurrent duplicates are admitted once with one delivery lease | `telegram`: "concurrent duplicates use one database admission…" |
-| Automatic retries stop after the budget, and stale responses cannot disable or revive a subscription | `review-regressions`: "automatic retry exhaustion…", "stale callback … cannot disable…", "an in-flight renewal cannot reactivate…" |
+| Explicit unsubscribe ends the chat's pending backlog; admissions that observe a pause or cross a cancellation generation stay terminal across resubscription | `subscription-recovery`: "explicit cancellation ends old backlog…", "a canceled admission delayed across resubscription…", "admission during a delayed resume transaction…", "unsubscribe of an unknown callback identity…" |
+| After signing, dispatch rechecks the exact pending lease and enabled subscription identity/revision/owner; lease, subscription and receipt expiry use a fresh clock after D1 resolves | `subscription-recovery`: "held recovery claim rechecks dispatch authorization…", "cancellation while event signing is held prevents callback…", "clock is refreshed after a delayed dispatch-guard read…" |
+| Automatic retries stop after the budget, and stale responses cannot disable or revive a subscription | `review-regressions`: "automatic retry exhaustion…", "stale callback … cannot disable…", "an in-flight renewal cannot reactivate…"; `subscription-recovery`: "automatic recovery selects at most ten eligible events without resetting retry guards" |
 | Sends go only to authorized destinations, are idempotent, and dispatch once under concurrency | `tools`: "outgoing requests reject unapproved destinations…", "sending is fixed-destination…", "concurrent identical sends…" |
 | An ambiguous send is recorded uncertain and never automatically resent | `tools`: "ambiguous network failure is uncertain…"; `topics`: "topic identity participates in idempotency…" |
 | Forum sends need an explicit topic and never fall back to General | `topics`: "topic sends require explicit routing…" |
@@ -149,12 +151,23 @@ Setup, delivery settings and recovery: [group chat](docs/group-chat.md),
 
 ## Delivery semantics
 
-Messages persist before callbacks. Automatic callback retries stop after eight
-attempts; pending records then need explicit owner recovery, and there is no
-scheduled drainer. Inbox records expire after seven days and outgoing operation
+Messages persist before callbacks; persisted no-subscription events are acknowledged
+to Telegram and remain pending. Successful subscription creation/renewal schedules
+at most ten eligible events with backoff, lease and budget guards, stopping new
+attempts after sixteen seconds. Background execution is best effort, not a durable
+scheduled drainer or a host-renewal guarantee. Explicit unsubscribe ends pending
+backlog and records a cancellation boundary; canceled-period history is terminal.
+Automatic callback retries stop after eight attempts; exhausted pending records
+need explicit owner recovery. Inbox records expire after seven days and outgoing operation
 records after thirty, with opportunistic cleanup. A successful key replays its
 recorded result, conflicting arguments fail, and there is no upstream exactly-once
 guarantee. Background: [design](docs/design.md), [operations](docs/operations.md).
+
+After signing, event dispatch rechecks the exact pending lease and enabled
+subscription identity/revision plus group access; current time is checked after
+the final D1 read for lease, subscription and receipt expiry. Guard rejection
+cannot revive canceled rows or unlock a competing lease. Guard/network dispatch
+are not atomic; retain the qualified boundary in the delivery documentation.
 
 ## Instruction design and maintenance
 
