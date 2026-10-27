@@ -25,19 +25,20 @@ await mkdir(resolve(root, 'dist/server'), { recursive: true });
 await mkdir(resolve(root, 'dist/.openai'), { recursive: true });
 const sourceRecord = await publicSource(root);
 // Bundle worker/index.js and any imported .js/.ts modules into one ESM file.
+// The public source version is stamped into worker/version.ts while bundling.
 // esbuild only strips types; `npm run typecheck` is the type gate.
 const entry = resolve(root, 'worker/index.js');
 const placeholder = "'unbuilt'; // PUBLIC_SOURCE_VERSION";
 const stampVersion = {
   name: 'public-source-version',
   setup(build) {
-    build.onLoad({ filter: /[\\/]worker[\\/]index\.js$/ }, async (args) => {
+    build.onLoad({ filter: /[\\/]worker[\\/]version\.ts$/ }, async (args) => {
       const contents = await readFile(args.path, 'utf8');
       if (!contents.includes(placeholder))
-        throw new Error('PUBLIC_SOURCE_VERSION placeholder not found in worker/index.js.');
+        throw new Error('PUBLIC_SOURCE_VERSION placeholder not found in worker/version.ts.');
       return {
         contents: contents.replace(placeholder, JSON.stringify(sourceRecord.version) + ';'),
-        loader: 'js',
+        loader: 'ts',
       };
     });
   },
