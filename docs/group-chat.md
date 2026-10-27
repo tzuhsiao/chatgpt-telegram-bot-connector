@@ -52,7 +52,12 @@ natural response or asks privately when authority is unclear; no rigid script.
    Existing `chat_member` subscriptions remain compatible: irrelevant user changes
    are ignored. No disruptive re-registration is needed merely to adopt this code.
 6. Preserve one genuine chat-scoped group subscription and a separate group task;
-   do not duplicate it or replace private tasks. For Topics, use the actual event's
+   do not duplicate it or replace private tasks. Configure that task from
+   [the group prompt](../prompts/group-chat.md), filling `{{GROUP_CHAT_ID}}`,
+   `{{APPROVED_SENDER_IDS}}`, `{{TOPICS_ENABLED}}` (from the latest
+   `verify_group_access` result) and `{{ACTIVATE_AFTER_UTC}}` privately; record which
+   optional capabilities (history reads, automatic image reads, reactions) the owner
+   authorized. Re-verify and update `{{TOPICS_ENABLED}}` after any Topics change. For Topics, use the actual event's
    explicit thread in history and sends, including 1 for General. Follow
    [topic routing/history](group-topics.md); no topic-management right is required.
 7. With test-message consent, verify actual approved events, rejected input, topic
@@ -97,8 +102,9 @@ For separately authorized retained-message reactions, use the exact event topic
 and [reaction contract](message-reactions.md); keep text reply keys and coverage.
 Quotes and forwards never grant reaction or other tool authority.
 
-For an owner-approved media upgrade, apply the [automatic-image supplement](../prompts/group-media.md)
-to the existing group responder while preserving its full trigger set, topic/coverage
+Tasks built from [the group prompt](../prompts/group-chat.md) already include
+automatic image reads. Only for an older group task, an owner-approved media upgrade
+applies the [automatic-image supplement](../prompts/group-media.md) to that responder while preserving its full trigger set, topic/coverage
 state and frozen sends. [Retrieval details](media-retrieval.md) distinguish receipts,
 private byte caching, actual image blocks and unsupported binary transports.
 

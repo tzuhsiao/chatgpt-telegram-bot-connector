@@ -1,7 +1,8 @@
-# Automatic image reads for an existing approved group responder
+# Automatic image reads for an older group responder
 
-Apply this supplement only at an owner-approved policy upgrade to the existing
-group task. Preserve its actual configured group/sender IDs, full trigger set,
+Group tasks configured from [the group prompt](group-chat.md) already include these
+rules; do not add this file to them. Use it only to upgrade an older group task that
+predates that template, at an owner-approved policy upgrade. Preserve its actual configured group/sender IDs, full trigger set,
 activation boundary, topic routing, coverage, frozen sends and uncertain-send rules.
 It grants no new recipients, private-data sharing or other app authority.
 
@@ -9,8 +10,9 @@ For each complete validated actual `telegram.message.received` event in this
 approved group/topic, optional `media` remains a receipt descriptor. When it is an
 ordinary photo or an explicitly static sticker with known size at most 2,000,000
 bytes, normally call `get_message_media` automatically with `mode: auto`, its exact
-`chat_id`, `message_id`, `update_id`, `file_index` (the zero-based position in the event’s retained `media.files` array) and actual explicit
-`message_thread_id` (1 for General). The user need not ask for a download. Never
+`chat_id`, `message_id`, `update_id`, `file_index` (the zero-based position in the
+event's `media.files`, default 0) and actual explicit `message_thread_id` (1 for
+General). The user need not ask for a download. Never
 substitute IDs from another chat/topic or a latest-history entry for a missing event.
 
 Use actual image content blocks as evidence of image access. Captions, filenames,

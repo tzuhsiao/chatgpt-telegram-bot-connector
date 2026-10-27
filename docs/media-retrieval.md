@@ -93,9 +93,10 @@ preserving operational settings, private/group allowlists, Site/plugin identity,
 subscriptions and outgoing idempotency. No new storage binding, secret or config
 key is needed. Re-disclose the private byte-cache storage/expiry to existing users.
 
-The approved UX also requires separately applying the automatic-read paragraph in
-`prompts/private-chat.md` and the supplement in `prompts/group-media.md` to the
-existing responders. Preserve all complete triggers, IDs, activation/coverage
+Automatic reads also need the responder policy: `prompts/private-chat.md` and
+`prompts/group-chat.md` include it, conditioned on owner authorization. Older group
+tasks that predate `prompts/group-chat.md` can instead apply the supplement in
+`prompts/group-media.md`. Preserve all complete triggers, IDs, activation/coverage
 state, frozen plans and conversational autonomy. This repository change does not
 edit live tasks and does not require a reply to every image.
 
