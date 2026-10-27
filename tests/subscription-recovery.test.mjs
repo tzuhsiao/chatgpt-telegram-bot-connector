@@ -484,6 +484,203 @@ test('malformed retained subscription revision fails closed before renewal', asy
   assert.equal(s.background.length, 0);
 });
 
+for (const change of [
+  'unsubscribe',
+  'unsubscribe_and_resume',
+  'renew',
+  'lease_expired',
+  'lease_replaced',
+  'subscription_expired',
+  'subscription_disabled',
+  'subscription_replaced',
+  'receipt_expired',
+])
+  test('held recovery claim rechecks dispatch authorization: ' + change, async (t) => {
+    const s = setup(t);
+    await s.receive(1);
+    if (change === 'receipt_expired')
+      await s.env.DB.prepare('UPDATE inbox SET received_at=?')
+        .bind(NOW - 7 * DAY + 1000)
+        .run();
+    const started = Promise.withResolvers(),
+      release = Promise.withResolvers();
+    const prepare = s.env.DB.prepare.bind(s.env.DB);
+    t.mock.method(s.env.DB, 'prepare', (sql) => {
+      const statement = prepare(sql);
+      if (!sql.includes('UPDATE inbox SET lease_token=') || !sql.includes('RETURNING *'))
+        return statement;
+      return {
+        bind(...args) {
+          const bound = statement.bind(...args);
+          return {
+            ...bound,
+            async first() {
+              const row = await bound.first();
+              started.resolve();
+              await release.promise;
+              return row;
+            },
+          };
+        },
+      };
+    });
+    try {
+      assert.ok((await s.subscribe()).result);
+      await waitFor(started.promise);
+      assert.equal(s.events.length, 0);
+      const claimed = await s.env.DB.prepare(
+        'SELECT state,lease_token,attempts FROM inbox',
+      ).first();
+      assert.equal(claimed.state, 'pending');
+      assert.equal(typeof claimed.lease_token, 'string');
+      assert.equal(claimed.attempts, 1);
+      if (change.startsWith('unsubscribe')) {
+        const result = await (
+          await s.worker.fetch(rpc('events/unsubscribe', subscription()), s.env)
+        ).json();
+        assert.deepEqual(result.result, {});
+        assert.deepEqual(
+          await s.env.DB.prepare('SELECT state,last_error,lease_token FROM inbox').first(),
+          { state: 'failed', last_error: 'subscription_cancelled', lease_token: null },
+        );
+        if (change === 'unsubscribe_and_resume')
+          assert.ok((await s.subscribe(subscription(), {})).result);
+      } else if (change === 'renew') {
+        assert.ok((await s.subscribe(subscription(), {})).result);
+      } else if (change === 'lease_expired') {
+        s.state.now += 30001;
+      } else if (change === 'lease_replaced') {
+        await s.env.DB.prepare("UPDATE inbox SET lease_token='replacement-lease'").run();
+      } else if (change === 'subscription_expired') {
+        await s.env.DB.prepare('UPDATE subscriptions SET expires_at=?')
+          .bind(NOW + 1000)
+          .run();
+        s.state.now += 2000;
+      } else if (change === 'subscription_disabled') {
+        await s.env.DB.prepare('UPDATE subscriptions SET enabled=0').run();
+      } else if (change === 'subscription_replaced') {
+        await s.env.DB.prepare("UPDATE subscriptions SET id='replacement-subscription'").run();
+      } else if (change === 'receipt_expired') {
+        s.state.now += 2000;
+      }
+      assert.equal(s.events.length, 0);
+    } finally {
+      release.resolve();
+      await s.flush();
+    }
+    assert.equal(s.events.length, 0);
+    const retained = await s.env.DB.prepare(
+      'SELECT state,last_error,lease_token,attempts FROM inbox',
+    ).first();
+    assert.equal(retained.attempts, 1);
+    if (change.startsWith('unsubscribe')) {
+      assert.equal(retained.state, 'failed');
+      assert.equal(retained.last_error, 'subscription_cancelled');
+    } else if (change === 'receipt_expired') {
+      assert.equal(retained.state, 'failed');
+      assert.equal(retained.last_error, 'expired');
+    } else {
+      assert.equal(retained.state, 'pending');
+    }
+    assert.equal(retained.lease_token, change === 'lease_replaced' ? 'replacement-lease' : null);
+    if (change === 'renew') {
+      assert.ok((await s.subscribe()).result);
+      await s.flush();
+      assert.equal(s.events.length, 1);
+    }
+  });
+
+for (const forum of [false, true])
+  test('cancellation while event signing is held prevents callback: forum=' + forum, async (t) => {
+    const s = setup(t, { forum });
+    const params = subscription({ arguments: { chat_id: forum ? GROUP : '10001' } });
+    if (forum) {
+      s.env.TELEGRAM_ALLOWED_GROUPS = JSON.stringify({ [GROUP]: ['10001', '20002'] });
+      assert.equal(
+        (await call(s.worker, s.env, 'verify_group_access', { chat_id: GROUP })).body.result
+          .structuredContent.state,
+        'active',
+      );
+    }
+    await s.receive(1, forum ? GROUP : '10001', forum ? 70 : undefined);
+    const started = Promise.withResolvers(),
+      release = Promise.withResolvers();
+    const sign = crypto.subtle.sign.bind(crypto.subtle);
+    t.mock.method(crypto.subtle, 'sign', async (...args) => {
+      const bytes = await sign(...args);
+      if (new TextDecoder().decode(args[2]).startsWith('tg_123456_1.')) {
+        started.resolve();
+        await release.promise;
+      }
+      return bytes;
+    });
+    try {
+      assert.ok((await s.subscribe(params)).result);
+      await waitFor(started.promise);
+      assert.equal(s.events.length, 0);
+      assert.deepEqual(
+        (await (await s.worker.fetch(rpc('events/unsubscribe', params), s.env)).json()).result,
+        {},
+      );
+      assert.equal((await s.env.DB.prepare('SELECT state FROM inbox').first()).state, 'failed');
+    } finally {
+      release.resolve();
+      await s.flush();
+    }
+    assert.equal(s.events.length, 0);
+    assert.deepEqual(
+      await s.env.DB.prepare('SELECT state,last_error,lease_token FROM inbox').first(),
+      { state: 'failed', last_error: 'subscription_cancelled', lease_token: null },
+    );
+  });
+
+for (const expiry of ['lease', 'subscription', 'receipt'])
+  test('clock is refreshed after a delayed dispatch-guard read: ' + expiry, async (t) => {
+    const s = setup(t);
+    await s.receive(1);
+    if (expiry === 'receipt')
+      await s.env.DB.prepare('UPDATE inbox SET received_at=?')
+        .bind(NOW - 7 * DAY + 1000)
+        .run();
+    const started = Promise.withResolvers(),
+      release = Promise.withResolvers();
+    const prepare = s.env.DB.prepare.bind(s.env.DB);
+    t.mock.method(s.env.DB, 'prepare', (sql) => {
+      const statement = prepare(sql);
+      if (!sql.includes('FROM inbox i JOIN subscriptions')) return statement;
+      return {
+        bind(...args) {
+          const bound = statement.bind(...args);
+          return {
+            ...bound,
+            async first() {
+              if (expiry === 'subscription')
+                await prepare('UPDATE subscriptions SET expires_at=?')
+                  .bind(NOW + 1000)
+                  .run();
+              const row = await bound.first();
+              started.resolve();
+              await release.promise;
+              return row;
+            },
+          };
+        },
+      };
+    });
+    try {
+      assert.ok((await s.subscribe()).result);
+      await waitFor(started.promise);
+      s.state.now += expiry === 'lease' ? 30001 : 2000;
+    } finally {
+      release.resolve();
+      await s.flush();
+    }
+    assert.equal(s.events.length, 0);
+    const row = await s.env.DB.prepare('SELECT state,lease_token FROM inbox').first();
+    assert.equal(row.state, expiry === 'receipt' ? 'failed' : 'pending');
+    assert.equal(row.lease_token, null);
+  });
+
 test('authenticated invalid message content is ignored while envelope and storage errors remain failures', async (t) => {
   const s = setup(t);
   for (const item of [update(1, ''), update(2, 'x'.repeat(4097)), update(3)]) {

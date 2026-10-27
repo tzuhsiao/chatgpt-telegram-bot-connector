@@ -83,6 +83,15 @@ export async function deliverEvent(
     now,
   );
   if (!subscription) return { state: 'pending', reason: 'no_subscription' };
+  const subscriptionId: unknown = subscription.id,
+    revision: unknown = subscription.revision;
+  if (
+    typeof subscriptionId !== 'string' ||
+    typeof revision !== 'number' ||
+    !Number.isSafeInteger(revision) ||
+    revision < 0
+  )
+    throw new AppError('Stored subscription is invalid.', 503, -32603);
   // An already-bound event must never migrate to a different subscribed conversation.
   if (record.subscription_id && record.subscription_id !== subscription.id) {
     await run(
@@ -129,14 +138,45 @@ export async function deliverEvent(
   };
   let status = null,
     errorCode = null;
+  const dispatchStopped = new Error('Delivery authorization changed before dispatch.');
   try {
-    const response = await sendCallback(
-      subscription,
-      payload,
-      env,
-      runtime,
-      group ? () => groupCurrent(group, env) : null,
-    );
+    const response = await sendCallback(subscription, payload, env, runtime, async () => {
+      if (group) await groupCurrent(group, env);
+      if (!senderAllowed(record.chat_id, record.sender_id, env)) throw dispatchStopped;
+      // sendCallback invokes this after every signing await, immediately before
+      // fetch. A claim result held across cancellation/renewal is not authority
+      // to dispatch: recheck the exact live lease and signed subscription.
+      const authorized = await first(
+        db,
+        `SELECT i.lease_until,i.received_at,s.expires_at
+          FROM inbox i JOIN subscriptions s ON s.id=i.subscription_id
+          WHERE i.event_id=? AND i.state='pending' AND i.lease_token=?
+          AND i.bot_id=? AND i.chat_id=s.chat_id
+          AND s.id=? AND s.revision=? AND s.owner_id=? AND s.enabled=1`,
+        eventId,
+        lease,
+        botId(env),
+        subscriptionId,
+        revision,
+        env.OWNER_USER_ID,
+      );
+      // Read the clock after D1 resolves too: the claim or guard read itself
+      // may have been delayed across lease, subscription or receipt expiry.
+      const dispatchNow = runtime.now();
+      if (
+        !authorized ||
+        typeof authorized.lease_until !== 'number' ||
+        !Number.isSafeInteger(authorized.lease_until) ||
+        authorized.lease_until <= dispatchNow ||
+        typeof authorized.expires_at !== 'number' ||
+        !Number.isSafeInteger(authorized.expires_at) ||
+        authorized.expires_at <= dispatchNow ||
+        typeof authorized.received_at !== 'number' ||
+        !Number.isSafeInteger(authorized.received_at) ||
+        authorized.received_at < dispatchNow - 7 * DAY
+      )
+        throw dispatchStopped;
+    });
     status = response.status;
     await response.body?.cancel();
     if (response.ok) {
@@ -152,6 +192,28 @@ export async function deliverEvent(
     }
     errorCode = status >= 300 && status < 400 ? 'redirect' : 'callback_http_error';
   } catch (error) {
+    if (error === dispatchStopped) {
+      const cutoff = runtime.now() - 7 * DAY;
+      // Release only our still-pending lease. Cancellation and a competing claim
+      // own their state; neither can be revived or unlocked by this stale worker.
+      await run(
+        db,
+        `UPDATE inbox SET
+        state=CASE WHEN received_at<? THEN 'failed' ELSE state END,
+        last_error=CASE WHEN received_at<? THEN 'expired' ELSE 'pre_dispatch_changed' END,
+        lease_token=NULL,lease_until=0
+        WHERE event_id=? AND state='pending' AND lease_token=?`,
+        cutoff,
+        cutoff,
+        eventId,
+        lease,
+      );
+      const current = await first(db, 'SELECT state FROM inbox WHERE event_id=?', eventId);
+      return {
+        state: typeof current?.state === 'string' ? current.state : 'missing',
+        reason: 'pre_dispatch_changed',
+      };
+    }
     errorCode = error instanceof AppError ? 'callback_configuration' : 'callback_network_error';
   }
   const terminal = status !== null && status < 500 && status !== 429 && status !== 408;

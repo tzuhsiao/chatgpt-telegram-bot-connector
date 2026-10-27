@@ -276,7 +276,11 @@ Explicit unsubscribe atomically disables the matched subscription, ends all exis
 
 The admission boundary is its first D1 cancellation snapshot, not Telegram's message date or HTTP arrival time: a request whose first admission snapshot is after resubscription is new. Already dispatched callbacks cannot be withdrawn. Legacy unsubscribes cannot be distinguished retrospectively from other disabled subscriptions; cancellation intent is recorded only by this version's explicit unsubscribe. Terminal canceled records cannot be revived with `retry_pending_events`.
 
-Natural expiry and temporary callback failure retain eligible pending events instead. A callback 401/403/410 disables its subscription and terminalizes that particular event; it does not write an explicit-cancellation marker. Use the status and explicit recovery path if delivery does not resume:
+Natural expiry and temporary callback failure retain eligible pending events instead. A callback 401/403/410 disables its subscription and terminalizes that particular event; it does not write an explicit-cancellation marker.
+
+Immediately before an event callback, after all signing awaits, delivery rechecks its exact pending lease and current enabled subscription identity/revision/owner, retaining the group access guard. It reads the clock after that D1 read and rejects expired leases, subscriptions and receipts. A claim returned after explicit cancellation, or a signature finishing after cancellation, cannot authorize a callback when the final guard observes the revocation. Guard rejection changes only its own pending lease and preserves canceled/competing-claim state. This guard is not an atomic D1-plus-network transaction; cancellation after its database snapshot can still race with dispatch.
+
+Use the status and explicit recovery path if delivery does not resume:
 
 1. Invoke the owner-only `get_connector_status` and inspect pending/error status without exporting secrets or message contents.
 2. Fix the cause: for example, restore a valid subscription, renew expired credentials, or correct the exact trusted callback origin. Do not loosen origin or identity checks as a recovery shortcut.

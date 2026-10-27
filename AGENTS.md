@@ -161,6 +161,12 @@ records after thirty, with opportunistic cleanup. A successful key replays its
 recorded result, conflicting arguments fail, and there is no upstream exactly-once
 guarantee. Background: [design](docs/design.md), [operations](docs/operations.md).
 
+After signing, event dispatch rechecks the exact pending lease and enabled
+subscription identity/revision plus group access; current time is checked after
+the final D1 read for lease, subscription and receipt expiry. Guard rejection
+cannot revive canceled rows or unlock a competing lease. Guard/network dispatch
+are not atomic; retain the qualified boundary in the delivery documentation.
+
 ## Instruction design and maintenance
 
 Write tools, prompts and skills for capable state-of-the-art models: give goals,
