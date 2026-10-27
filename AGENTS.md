@@ -1,16 +1,13 @@
 # Telegram Bot Connector: agent instructions
 
-## Core project philosophy
+## Project principles
 
-This project gives dots two capabilities:
-
-1. Trigger the dot when a new accepted Telegram message arrives.
-2. Provide tools the dot can use to operate its Telegram bot.
-
-Conversational behavior is delegated to the dot. It decides whether, when and how
-to respond in conversation. Future changes must not make replies or quoting mandatory, require
-one reply per message, or impose rigid conversational policies. Conversation
-templates remain adaptable defaults.
+The [README principles](README.md#principles) are binding for every change: the
+connector only triggers the dot and provides Telegram tools, never forcing a
+conversational behavior; and everything runs in, and belongs to, the owner's own
+account with no third-party service. Future changes must not make replies or quoting
+mandatory, require one reply per message, or impose rigid conversational policies.
+Conversation templates remain adaptable defaults.
 
 Technical safeguards remain required and are not relaxed by this conversational
 autonomy, including all controls below: access control, credential protection,
@@ -195,7 +192,7 @@ keys and coverage/migration rules when grouping responses. Do not invent shared
 state, timer/polling collection or new app authority. Optional emoji text uses
 `send_message`; real reactions use the separately authorized `set_message_reaction`
 contract in [message reactions](docs/message-reactions.md). Reaction receipt never
-resolves substantive requests or changes existing text send keys. The short public README stays unchanged.
+resolves substantive requests or changes existing text send keys.
 
 Keep Telegram credentials absent while a new deployment's authentication,
 persistence and subscription gates are tested. Verify the real public edge rejects
