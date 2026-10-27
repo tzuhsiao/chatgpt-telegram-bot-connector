@@ -1,6 +1,6 @@
 ---
 name: telegram-maintenance
-description: Investigate visible Telegram Bot Connector failures, distinguish causes, and contribute sanitized issues or validated draft fixes under current user authorization.
+description: Use when a Telegram Bot Connector tool returns an error, an unexpected result or a diagnostics envelope. Investigate the cause, then contribute a sanitized issue or, if authorized, a validated draft fix.
 ---
 
 # Maintain Telegram Bot Connector
