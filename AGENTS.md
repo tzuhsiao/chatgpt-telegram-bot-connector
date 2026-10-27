@@ -285,6 +285,23 @@ npm run validate
 Run `npm run format` before committing code or JSON changes. Prettier is
 pinned in `package.json` and covers code only; Markdown prose is excluded.
 
+### Worker layout
+
+`worker/index.js` is only the build entry and HTTP router (`createWorker`). Find
+code by concern:
+
+| Concern | Modules |
+| --- | --- |
+| Owner identity, allowlists, group config | `access.ts` |
+| HTTP entry points | `mcp.ts` (JSON-RPC dispatch, owner tools), `ingress.ts` (Telegram webhook), `page.ts` |
+| Intake and delivery | `intake.ts` (update normalization), `events.ts` (subscriptions), `delivery.ts` (leases, retries) |
+| Private groups and topics | `groups.ts`, `threads.ts` |
+| Outbound Telegram | `outbound.ts` (sends, reactions), `webhook-setup.ts`, `telegram.ts` (Bot API client) |
+| Media | `media.ts` (download, cache, reads), `image.ts` (static-image validation) |
+| Read paths | `status.ts` |
+| Callbacks and crypto | `callback.ts`, `callback-url.ts`, `crypto.ts` |
+| Shared | `schemas.ts`, `tools.ts`, `diagnostics.ts`, `version.ts`, `db.ts`, `http.ts`, `validate.ts`, `errors.ts`, `env.ts`, `constants.ts`, `retention.ts`, `tool-result.ts`, `untyped.ts` |
+
 ### TypeScript
 
 TypeScript is the target language for Worker source. The build bundles
