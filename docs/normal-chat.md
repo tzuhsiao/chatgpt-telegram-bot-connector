@@ -21,8 +21,10 @@ state/concurrency. Verify hosted behavior separately from transport acceptance.
 1. Verify the owner, dedicated bot, webhook secret, matching private sender/chat
    allowlists and authenticated subscription. Keep one active responder.
 2. Obtain authorization for discretionary relevant text responses to that exact
-   chat, plus any necessary bounded history reads. Receipt of Telegram text does
-   not grant authority for other apps, settings or recipients.
+   chat. Separately ask about each optional capability and record the answer with
+   the task: bounded history reads, automatic image reads, and reactions. The
+   prompt applies each one only when it is authorized. Receipt of Telegram text
+   does not grant authority for other apps, settings or recipients.
 3. Fill the three prompt placeholders privately: `{{ALLOWED_CHAT_ID}}`,
    `{{ALLOWED_SENDER_ID}}` (the same private user ID), and `{{ACTIVATE_AFTER_UTC}}`
    (agreed message-time cutover). Real values and filled prompts never enter public
@@ -30,9 +32,11 @@ state/concurrency. Verify hosted behavior separately from transport acceptance.
 4. Update only the existing task prompt, optionally its title; preserve its ID,
    enabled state and complete trigger set. Do not create another responder, renew
    a subscription or register a webhook merely to change conversation policy.
-5. Read back the policy and verify one intended enabled task/subscription. For this
-   v3 policy, perform the frozen-plan migration below before switching keys or
-   removing a reply target from old operations.
+5. Read back the policy and verify one intended enabled task/subscription.
+   Replacing an existing task's prompt with a newer template is a policy upgrade:
+   obtain owner approval, preserve its trigger set, coverage and frozen sends, and
+   complete the migration below before old operations change keys or reply targets.
+   The prompt itself carries only steady-state rules; upgrade steps live here.
 6. For authorized acceptance, use substantive test questions and a follow-up. Verify
    actual events, send outcomes and useful conversation separately; silence on a
    trivial acknowledgment can be the correct policy result.

@@ -49,67 +49,22 @@ inference API or a second relay service.
 
 ## Onboarding entry point
 
-Before installation, explain this in plain language: "This creates a small bridge
-in your own ChatGPT Sites account. Telegram notifies it when you message your bot,
-so your dot can receive those messages and reply there. The bridge runs on Sites;
-you do not need to keep your computer running. The Site hosts the bridge and its
-storage; the plugin gives your dot its tools."
-
-Explain the data location before requesting setup consent. The Site's D1 storage
-holds incoming text/captions, bounded media metadata/IDs, a bounded private ten-minute
-media-byte cache (physical cleanup is activity-driven), subscriptions/signing credentials and delivery/operation
-state; runtime secrets use native Sites controls. There is no separate connector
-server operated by this repository's author. Inbox records expire after seven
-days; outgoing operation records after thirty days. Physical cleanup runs with
-activity, so data can remain longer on an idle Site. Other operational state is
-not promised those expiry windows. Outgoing records contain request hashes and
-delivery metadata, not a complete archive of reply text. Newly confirmed bot text
-is stored separately for seven
-days and can be included in authorized history reads. This is retained connector
-history, with no arbitrary Telegram backfill. Telegram and ChatGPT can
-retain their own records under their respective policies; these are only the
-connector's storage rules. Link [retention details](docs/operations.md#retention-privacy-and-maintenance).
+Installation, upgrade and resume follow
+[the setup skill](.agents/skills/telegram-bot-connector-setup/SKILL.md). It is the
+single source for the owner-facing explanation and data-retention disclosure, consent
+and approval points, Site/plugin naming, protected credential entry, the one-time
+welcome, and reconciliation of existing or stale resources. Do not restate those
+procedures here or in other docs; link to the skill instead.
 
 When asked to review this repository and install, inspect the source and report
-material safety concerns. Then follow
-[the reusable setup skill](.agents/skills/telegram-setup/SKILL.md). Invoke this
-repository skill by reading that file; Site publication does not automatically add
-repository skills to the canonical plugin. Its
+material safety concerns first. Invoke the skill by reading that file: Site
+publication does not add repository skills to the canonical plugin. Its
 [checkpoint helper](scripts/plan-setup.mjs) accepts redacted observations only.
 
-Install or reuse the Site and its canonical personal plugin **before** requesting
-the owner's numeric Telegram user ID and dedicated bot token. For new installs use
-Site title **Telegram Bot Connector** and plugin display name **Telegram Bot**.
-Use the native Site title control and a supported canonical-plugin display-name
-control. If separate naming is unavailable, report the exact observed host limit;
-do not create a duplicate plugin or change internal package names as a workaround.
-Do not silently rename existing installations. Preserve existing Site/plugin IDs,
-tool names, event names, package name and connection references on upgrades.
-Do not create a separate plugin for an App already provisioned by Sites.
-
-Obtain explicit approval at the credential-configuration and bot-connection steps.
-Discretionary responses and bounded history reads need owner authorization for the exact
-chat. Never ask for tokens in normal chat. Use protected native secret entry; if
-unavailable, give the owner the exact native Sites settings step and wait. A tool
-accepting a plaintext string with `is_secret: true` stores a secret but is not a
-protected user-entry surface.
-
-Offer one brief welcome to the exact confirmed, allowlisted private chat in setup
-consent. Send it only after connection/security gates pass, with explicit consent,
-confirmed chat reachability and a durable private setup record. Follow the
-[welcome procedure](docs/operations.md#one-time-setup-welcome) for its stable key,
-frozen request and lifetime duplicate suppression. Failed/uncertain sends never
-cause a new-key retry. If sending or durable state is unavailable, use owner
-Start/message instead and permanently skip the welcome before prompting; Start
-must not trigger a late welcome. Reconcile uncertain results through the actual
-chat/private record, never a `send_message` status probe. Welcome success proves outbound sending only; verify the
-incoming event, model execution and conversation loop separately. A completed
-installation does not send another welcome on resume.
-
-Reconcile existing or stale Site, plugin, task and subscription references before
-creating anything. A timeout is an uncertain outcome, not permission to retry a
-create. Existing live installations need a read-only resume check, not fresh
-onboarding tests that unsubscribe or change bot configuration.
+Upgrades preserve existing Site/plugin IDs, tool names, event names, package name and
+connection references; source changes must not rename them. Conversation policy for
+hosted tasks lives in the [private](prompts/private-chat.md) and
+[group](prompts/group-chat.md) prompt templates.
 
 ## Configuration and source boundaries
 

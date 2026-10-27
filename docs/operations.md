@@ -3,7 +3,7 @@
 This guide covers the single-owner, dedicated-bot MVP. It uses ChatGPT Sites, a Worker, and D1. It does not require a human Telegram account session, external model API, scheduled polling, or a second relay service.
 
 For agent-driven installation, start with [AGENTS.md](../AGENTS.md) and the
-[setup skill](../.agents/skills/telegram-setup/SKILL.md). Install/reuse the Site and
+[setup skill](../.agents/skills/telegram-bot-connector-setup/SKILL.md). Install/reuse the Site and
 its canonical plugin first, then guide the two intended owner inputs. Use
 **Telegram Bot Connector** for the new Site title and **Telegram Bot** for the
 canonical plugin display name. The Site hosts the bridge/storage; the plugin gives
