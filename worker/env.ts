@@ -12,3 +12,9 @@ export interface Env {
   MCP_CALLBACK_ORIGINS?: unknown;
   MCP_DIAGNOSTICS?: unknown;
 }
+
+// Injected I/O so tests can control the network and clock.
+export interface Runtime {
+  fetch: typeof fetch;
+  now: () => number;
+}

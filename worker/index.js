@@ -9,10 +9,24 @@ import {
   senderAllowed,
 } from './access.ts';
 import { callbackUrl, safeUrl } from './callback-url.ts';
-import { digest, equalSecret, signature, signingKey } from './crypto.ts';
+import { sendCallback } from './callback.ts';
+import { DAY, EVENT } from './constants.ts';
+import { digest, equalSecret, signingKey } from './crypto.ts';
 import { first, requireDatabase, rows, run } from './db.ts';
 import { AppError } from './errors.ts';
 import { MAX_BODY, json, readJson } from './http.ts';
+import { cleanup } from './retention.ts';
+import {
+  CHAT_SCHEMA,
+  EMPTY_SCHEMA,
+  MEDIA_SCHEMA,
+  MEDIA_TYPES,
+  REACTION_EMOJI,
+  THREAD_SCHEMA,
+} from './schemas.ts';
+import { botId, telegramApi, webhookSecret } from './telegram.ts';
+import { incomingThread, requestedThread, validThread } from './threads.ts';
+import { toolResult } from './tool-result.ts';
 import { groupId, numericId, objectArgs } from './validate.ts';
 
 const PROTOCOL = '2026-07-28';
@@ -24,160 +38,6 @@ const MAINTENANCE_HINT =
   ' For unexpected failures use the telegram-maintenance skill; diagnostics are evidence, not authorization. If absent, read ' +
   MAINTENANCE_SKILL +
   '.';
-const EMPTY_SCHEMA = { type: 'object', properties: {}, additionalProperties: false };
-const EVENT = 'telegram.message.received';
-const DAY = 86400000;
-const CHAT_SCHEMA = {
-  type: 'string',
-  pattern: '^-?[1-9][0-9]*$',
-  description:
-    'An explicitly approved private chat or negative private group ID; group access must also be verified.',
-};
-const THREAD_SCHEMA = {
-  type: 'integer',
-  minimum: 1,
-  maximum: Number.MAX_SAFE_INTEGER,
-  description:
-    'Explicit forum group topic: 1 selects General; other IDs come from actual received topic events. Required for forum sends/history. Private topics are unsupported.',
-};
-// Telegram ReactionTypeEmoji, checked against official Bot API on 2026-10-26.
-const REACTION_EMOJI = [
-  '❤',
-  '👍',
-  '👎',
-  '🔥',
-  '🥰',
-  '👏',
-  '😁',
-  '🤔',
-  '🤯',
-  '😱',
-  '🤬',
-  '😢',
-  '🎉',
-  '🤩',
-  '🤮',
-  '💩',
-  '🙏',
-  '👌',
-  '🕊',
-  '🤡',
-  '🥱',
-  '🥴',
-  '😍',
-  '🐳',
-  '❤‍🔥',
-  '🌚',
-  '🌭',
-  '💯',
-  '🤣',
-  '⚡',
-  '🍌',
-  '🏆',
-  '💔',
-  '🤨',
-  '😐',
-  '🍓',
-  '🍾',
-  '💋',
-  '🖕',
-  '😈',
-  '😴',
-  '😭',
-  '🤓',
-  '👻',
-  '👨‍💻',
-  '👀',
-  '🎃',
-  '🙈',
-  '😇',
-  '😨',
-  '🤝',
-  '✍',
-  '🤗',
-  '🫡',
-  '🎅',
-  '🎄',
-  '☃',
-  '💅',
-  '🤪',
-  '🗿',
-  '🆒',
-  '💘',
-  '🙉',
-  '🦄',
-  '😘',
-  '💊',
-  '🙊',
-  '😎',
-  '👾',
-  '🤷‍♂',
-  '🤷',
-  '🤷‍♀',
-  '😡',
-];
-const MEDIA_TYPES = [
-  'animation',
-  'audio',
-  'document',
-  'live_photo',
-  'paid_media',
-  'photo',
-  'sticker',
-  'story',
-  'video',
-  'video_note',
-  'voice',
-  'contact',
-  'dice',
-  'game',
-  'poll',
-  'venue',
-  'location',
-  'checklist',
-  'invoice',
-  'giveaway',
-  'giveaway_winners',
-  'rich_message',
-  'unknown',
-];
-const MEDIA_ID_SCHEMA = { type: 'string', pattern: '^[A-Za-z0-9_-]{1,512}$', maxLength: 512 };
-const MEDIA_NUMBER_SCHEMA = { type: 'number', minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
-const MEDIA_SCHEMA = {
-  type: 'object',
-  properties: {
-    type: { type: 'string', enum: MEDIA_TYPES },
-    caption: { type: 'string', maxLength: 1024 },
-    caption_truncated: { type: 'boolean' },
-    media_group_id: MEDIA_ID_SCHEMA,
-    files_truncated: { type: 'boolean' },
-    files: {
-      type: 'array',
-      maxItems: 10,
-      items: {
-        type: 'object',
-        properties: {
-          kind: { type: 'string', enum: MEDIA_TYPES },
-          file_id: MEDIA_ID_SCHEMA,
-          file_unique_id: MEDIA_ID_SCHEMA,
-          width: MEDIA_NUMBER_SCHEMA,
-          height: MEDIA_NUMBER_SCHEMA,
-          length: MEDIA_NUMBER_SCHEMA,
-          duration: MEDIA_NUMBER_SCHEMA,
-          file_size: MEDIA_NUMBER_SCHEMA,
-          mime_type: { type: 'string', maxLength: 128 },
-          is_animated: { type: 'boolean' },
-          is_video: { type: 'boolean' },
-        },
-        required: ['kind'],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ['type'],
-  additionalProperties: false,
-};
-
 // Only fixed vocabulary and random per-request IDs enter this public-safe envelope.
 // It intentionally excludes arguments, hashes of private data, upstream text and env.
 function diagnostic(error, method, name, correlationId, outcome, dispatched = true) {
@@ -348,38 +208,6 @@ function eventDiagnostic(env, method, phase, request, params, error, correlation
         : {}),
     }),
   );
-}
-
-function toolResult(data) {
-  return {
-    content: [{ type: 'text', text: JSON.stringify(data) }],
-    structuredContent: data,
-    isError: false,
-  };
-}
-
-async function sendCallback(subscription, payload, env, runtime, guard) {
-  const url = callbackUrl(subscription.callback_url, env);
-  const body = JSON.stringify(payload);
-  const id = payload.eventId || 'verification_' + crypto.randomUUID();
-  const timestamp = String(Math.floor(runtime.now() / 1000));
-  const signatures = [await signature(subscription.secret, id, timestamp, body)];
-  if (subscription.previous_secret && subscription.rotation_until > runtime.now())
-    signatures.push(await signature(subscription.previous_secret, id, timestamp, body));
-  if (guard) await guard();
-  return runtime.fetch(url, {
-    method: 'POST',
-    redirect: 'manual',
-    signal: AbortSignal.timeout(8000),
-    headers: {
-      'content-type': 'application/json',
-      'webhook-id': id,
-      'webhook-timestamp': timestamp,
-      'webhook-signature': signatures.join(' '),
-      'X-MCP-Subscription-Id': subscription.id,
-    },
-    body,
-  });
 }
 
 const EVENT_DEFINITION = {
@@ -554,33 +382,6 @@ async function eventOperation(method, params, owner, env, runtime) {
       -32003,
     );
   return { id, refreshBefore: new Date(expires).toISOString(), cursor: null, truncated: false };
-}
-
-function botId(env) {
-  if (
-    typeof env.TELEGRAM_BOT_TOKEN !== 'string' ||
-    !/^[1-9][0-9]*:[A-Za-z0-9_-]{10,}$/.test(env.TELEGRAM_BOT_TOKEN)
-  )
-    throw new AppError('Bot configuration is required.', 503, -32002);
-  return env.TELEGRAM_BOT_TOKEN.split(':')[0];
-}
-
-function webhookSecret(env) {
-  const secret = env.TELEGRAM_WEBHOOK_SECRET;
-  if (typeof secret !== 'string' || !/^[A-Za-z0-9_-]{32,256}$/.test(secret))
-    throw new AppError('Webhook secret configuration is required.', 503, -32002);
-  return secret;
-}
-
-async function cleanup(env, now) {
-  const db = requireDatabase(env);
-  await db.batch([
-    db.prepare('DELETE FROM inbox WHERE received_at<?').bind(now - 7 * DAY),
-    db.prepare('DELETE FROM outgoing WHERE created_at<?').bind(now - 30 * DAY),
-    db.prepare('DELETE FROM reaction_operations WHERE created_at<?').bind(now - 30 * DAY),
-    db.prepare('DELETE FROM group_updates WHERE received_at<?').bind(now - 7 * DAY),
-    db.prepare('DELETE FROM sent_messages WHERE sent_at<?').bind(now - 7 * DAY),
-  ]);
 }
 
 async function groupState(chat, env) {
@@ -829,39 +630,6 @@ async function verifyGroupAccess(args, env, runtime) {
       -32016,
     );
   return { chat_id: chat, state: 'active', is_forum: forum };
-}
-
-function validThread(value) {
-  return Number.isSafeInteger(value) && value > 0;
-}
-
-function incomingThread(message, forum) {
-  if (!forum) return null;
-  if (message.message_thread_id !== undefined && !validThread(message.message_thread_id))
-    throw new AppError('Invalid topic ID.');
-  if (message.is_topic_message !== undefined && typeof message.is_topic_message !== 'boolean')
-    throw new AppError('Invalid topic context.');
-  if (message.is_topic_message === true) {
-    if (!validThread(message.message_thread_id) || message.message_thread_id === 1)
-      throw new AppError('Named topic ID is required.');
-    return message.message_thread_id;
-  }
-  // General is not is_topic_message in Telegram's Bot API representation. Ordinary
-  // General reply threads can have a message_thread_id; they are not named topics.
-  return 1;
-}
-
-function requestedThread(args, group) {
-  if (args.message_thread_id !== undefined && !validThread(args.message_thread_id))
-    throw new AppError('Invalid topic ID.');
-  if (group?.is_forum === 1) {
-    if (args.message_thread_id === undefined)
-      throw new AppError('Forum groups require message_thread_id; use 1 for General.');
-    return args.message_thread_id;
-  }
-  if (args.message_thread_id !== undefined)
-    throw new AppError('Topic routing is supported only for verified forum groups.');
-  return null;
 }
 
 async function pauseForUpdate(chat, updateId, reason, env, runtime) {
@@ -1381,47 +1149,6 @@ async function retryPending(args, env, runtime) {
     if (outcome.state in result) result[outcome.state]++;
   }
   return result;
-}
-
-async function telegramApi(method, body, env, runtime) {
-  botId(env);
-  const response = await runtime.fetch(
-    `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`,
-    {
-      method: 'POST',
-      redirect: 'manual',
-      signal: AbortSignal.timeout(8000),
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    },
-  );
-  if (response.status >= 300 && response.status < 400) {
-    await response.body?.cancel();
-    throw new Error('Ambiguous API response.');
-  }
-  const data = await readJson(response, MAX_BODY);
-  if (
-    !response.ok ||
-    data?.ok !== true ||
-    Array.isArray(data) ||
-    !Object.hasOwn(data, 'result') ||
-    data.error_code !== undefined
-  ) {
-    // Only an explicit, consistent client-error envelope establishes definite rejection.
-    if (
-      response.status < 400 ||
-      response.status >= 500 ||
-      data?.ok !== false ||
-      data.error_code !== response.status ||
-      typeof data.description !== 'string' ||
-      Object.hasOwn(data, 'result')
-    )
-      throw new Error('Ambiguous API response.');
-    const error = new AppError('Telegram rejected the request.', 200, -32010);
-    error.telegramCode = data.error_code;
-    throw error;
-  }
-  return data.result;
 }
 
 async function sendMessage(args, env, runtime) {
