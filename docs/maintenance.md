@@ -33,8 +33,10 @@ They are still private operational logs, not public attachments. The ID only
 correlates a response with a log when such a log exists; no diagnostic database or
 telemetry service is added.
 
-`npm run build` computes the fingerprint from an explicit list of public Worker,
-skill, build recipe and migration inputs. `dist/public-source.json` records each
+`npm run build` computes the fingerprint from public inputs: every `.js`/`.ts`
+module under `worker/`, the maintenance skill, the build recipe (`scripts/build.mjs`,
+`scripts/public-source.mjs`, `package-lock.json` and `tsconfig.json`, which pin and
+configure the esbuild bundle) and migrations. `dist/public-source.json` records each
 file hash so another checkout can reproduce it with `publicSource(root)` from
 `scripts/public-source.mjs`. Text inputs normalize CRLF to LF for cross-checkout matching. No Git remote, dirty status, environment variables,
 private hosting manifest, timestamps or Site identity affect the fingerprint.

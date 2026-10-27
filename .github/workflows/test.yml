@@ -17,8 +17,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
+      - name: Install pinned dev tools
+        run: npm ci
       - name: Check formatting
         run: npm run format:check
+      - name: Type check
+        run: npm run typecheck
       - name: Run tests
         run: npm test
       - name: Build Worker

@@ -104,7 +104,7 @@ For an accepted private message, the sender ID and chat ID must match and appear
 
 ## Bootstrap a new deployment
 
-1. Run `npm test`, `npm run build`, and `npm run validate` on Node.js 24. Review the bundle and the public working tree for accidental operational data before publication.
+1. Run `npm ci`, then `npm run typecheck`, `npm test`, `npm run build`, and `npm run validate` on Node.js 24. Review the bundle and the public working tree for accidental operational data before publication.
 2. Create a new Site **owner-private**. Leave unrelated deployments unchanged. Configure its `DB` D1 binding and install the repository's schema using the supported hosting migration workflow.
 3. In the private Site-managed source, retain and track the actual `.openai/hosting.json` with the returned `project_id` and the template's required bindings/capabilities. Deploy the validated bundle. Keep this manifest out of the canonical public repository. Do not put runtime secrets in the manifest or compile them into the Worker.
 4. Connect ChatGPT to this private Site's MCP endpoint and invoke `get_connector_identity` through the real MCP connection. The identity tool reports the current caller; it never selects the first visitor as owner. An absent identity is not a usable bootstrap result.
@@ -337,9 +337,12 @@ To stop delivery, unregister or disable the dedicated bot's webhook through its 
 
 ## Development and CI
 
-Use Node.js 24. No runtime package installation is needed for the dependency-free Worker and built-in test runner.
+Use Node.js 24. The Worker has no runtime dependencies. `npm ci` installs the pinned development tools: esbuild bundles `worker/index.js` and its imported `.js`/`.ts` modules into one ESM file, and TypeScript provides the type check.
 
 ```sh
+npm ci
+npm run format:check
+npm run typecheck
 npm test
 npm run build
 npm run validate
@@ -347,4 +350,4 @@ npm run validate
 
 The tests use a real SQLite-backed D1 adapter for persistence, uniqueness, and concurrency behavior. They cover authorization, validation, event lifecycle, signed callbacks, redirect refusal, pending recovery, and outgoing idempotency. Local fixtures are synthetic and are not evidence of a hosted integration result.
 
-GitHub Actions runs only the three commands above on Node.js 24. It does not deploy, register webhooks, contact a real bot, or consume production secrets. Keep real deployment metadata in the private Site-managed source, never in the canonical public repository, and perform hosted acceptance checks against the new Site explicitly.
+GitHub Actions runs only the commands above on Node.js 24. It does not deploy, register webhooks, contact a real bot, or consume production secrets. Keep real deployment metadata in the private Site-managed source, never in the canonical public repository, and perform hosted acceptance checks against the new Site explicitly.
