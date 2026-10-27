@@ -2,8 +2,7 @@
 
 ## Project principles
 
-These principles, summarized for users in the [README](README.md#what-it-is-and-isnt),
-are binding for every change.
+These principles are binding for every change.
 
 1. **Triggers and tools, not behavior.** The connector only triggers the dot with MCP
    events and provides Telegram tools. Conversational behavior is agreed between the
