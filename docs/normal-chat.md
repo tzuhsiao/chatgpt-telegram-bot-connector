@@ -90,6 +90,27 @@ topic must be echoed exactly. A rejection or ambiguous destination never falls
 back or automatically retries. No new migration is needed beyond the existing
 topic/history schema.
 
+The wire rules above were checked against official source on 2026-10-28:
+
+- TDLib's [private-message topic classification](https://github.com/tdlib/td/blob/4c6377aa7386c39217878a9a56d581922ad37ca4/td/telegram/MessageTopic.cpp#L21-L79)
+  makes private bot topics forum topics; ordinary private replies do not create
+  reply threads. Its [outbound topic validation](https://github.com/tdlib/td/blob/4c6377aa7386c39217878a9a56d581922ad37ca4/td/telegram/MessageTopic.cpp#L148-L174)
+  accepts ordinary message threads only for eligible supergroups.
+- Bot forums use the same General topic defined as 1 by
+  [ForumTopicId::general](https://github.com/tdlib/td/blob/4c6377aa7386c39217878a9a56d581922ad37ca4/td/telegram/ForumTopicId.h).
+  The [forum specification](https://core.telegram.org/api/forum#bot-forums) reserves
+  General; named topics have other IDs. The Bot API's
+  [get_forum_topic_id / is_topic_message serialization](https://github.com/tdlib/telegram-bot-api/blob/e3e9dd8e5b3d7ab8537cd5a10dc31d5ffa8f82d1/telegram-bot-api/Client.cpp#L19963-L20031)
+  omits the General ID and named-topic flag, including for private bot chats.
+- The Bot API's [check_message_topic](https://github.com/tdlib/telegram-bot-api/blob/e3e9dd8e5b3d7ab8537cd5a10dc31d5ffa8f82d1/telegram-bot-api/Client.cpp#L8926-L8961)
+  rejects explicit 1 only in its forum-supergroup branch. Private topics go
+  through topic lookup, so private sends preserve explicit 1 while group General
+  sends omit it. This does not guarantee that an unavailable topic accepts a send.
+
+These pinned checks support the routing contract; they do not establish the
+installed Telegram/hosting behavior. The setup skill's private-topic acceptance
+must inspect actual omitted-ID, explicit-1 and named-topic send responses.
+
 Normal topic sends omit `reply_to_message_id`. An optional private quote must now
 target a retained incoming or confirmed-bot message in the exact context. This
 also prevents a no-ID send from quoting into a named topic. Unknown, expired,

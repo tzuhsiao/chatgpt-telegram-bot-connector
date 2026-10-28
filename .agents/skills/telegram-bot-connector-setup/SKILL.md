@@ -227,9 +227,27 @@ upgrade; never replay with a new key to evade a rejected target.
 
 With separate test-message consent, verify two named private topics and General:
 actual callbacks retain context, history excludes other topics, normal sends need
-no quote, and duplicates/uncertain outcomes preserve frozen operations. Local
-tests do not prove BotFather state or hosted task execution. Do not change live
-tasks, BotFather settings or deployments during source development.
+no quote, and duplicates/uncertain outcomes preserve frozen operations. With
+Topics already enabled, hosted acceptance must inspect each of these send cases:
+
+| Frozen request | Required private observation |
+| --- | --- |
+| No `message_thread_id` | The actual returned Telegram Message has no thread ID or General ID 1, never a named-topic ID; the reply and retained history stay in General. |
+| Explicit `message_thread_id: 1` | Telegram accepts the General send; inspect its returned thread ID and `is_topic_message`, allowing the documented omitted General fields. If an actual incoming event includes 1, verify that its normal reply preserves 1. Never fabricate such an event to test this path. |
+| An actual named-topic ID | The returned Message echoes that exact ID and topic context; verify both named topics independently, including events and isolated history. |
+
+Inspect actual response fields (`message_thread_id`, `is_topic_message`) through
+an available, authorized secret-safe observation path. The current send tool's
+receipt does not expose those raw fields, so a sent receipt alone cannot establish
+their wire shape. If evidence is unavailable, record that acceptance gap; do not
+add production logging, expose bot-token URLs or send more probes to work around
+it. Keep observations private. On rejection or uncertainty preserve the original
+key and arguments for reconciliation; never strip a topic, change keys or resend
+to make acceptance pass. See the [pinned source evidence](../../../docs/normal-chat.md#private-topics).
+
+Local tests and source inspection do not prove BotFather state or hosted task
+execution. Do not change live tasks, BotFather settings or deployments during
+source development.
 
 ### Optional approved private group
 
