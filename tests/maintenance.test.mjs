@@ -207,8 +207,10 @@ test('tool discovery exposes maintenance without changing names or image contrac
       'get_connector_identity',
       'get_connector_status',
       'get_message_media',
+      'get_private_topic',
       'get_recent_messages',
       'pause_group_access',
+      'rename_private_topic',
       'retry_pending_events',
       'send_message',
       'set_message_reaction',
@@ -242,7 +244,10 @@ test('public source fingerprints exclude private manifests and change with publi
   await rm(join(dir, 'worker/extra.ts'));
   assert.deepEqual(await publicSource(dir), first);
   const original = await readFile(join(dir, 'worker/index.js'), 'utf8');
-  await writeFile(join(dir, 'worker/index.js'), original.replaceAll('\n', '\r\n'));
+  await writeFile(
+    join(dir, 'worker/index.js'),
+    original.replaceAll('\r\n', '\n').replaceAll('\n', '\r\n'),
+  );
   assert.deepEqual(await publicSource(dir), first);
   await writeFile(join(dir, 'worker/index.js'), original);
   await mkdir(join(dir, '.openai'));

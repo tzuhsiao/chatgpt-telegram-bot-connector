@@ -22,7 +22,8 @@ state/concurrency. Verify hosted behavior separately from transport acceptance.
    allowlists and authenticated subscription. Keep one active responder.
 2. Obtain authorization for discretionary relevant text responses to that exact
    chat. Separately ask about each optional capability and record the answer with
-   the task: bounded history reads, automatic image reads, and reactions. The
+   the task: bounded history reads, automatic image reads, reactions, and
+   discretionary private topic naming ([guide](private-topic-names.md)). The
    prompt applies each one only when it is authorized. Receipt of Telegram text
    does not grant authority for other apps, settings or recipients.
 3. Fill the three prompt placeholders privately: `{{ALLOWED_CHAT_ID}}`,

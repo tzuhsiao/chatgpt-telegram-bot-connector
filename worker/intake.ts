@@ -116,12 +116,14 @@ export function normalizedMedia(message: UntypedJson): NormalizedMedia {
   return media;
 }
 
-function inputRecord(value: unknown): Record<string, unknown> | null {
+export function inputRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
 }
 
-export function normalizedUpdate(raw: unknown, env: Env, now: number) {
+// Shared envelope checks also gate private topic lifecycle observations. Service
+// metadata never enters conversational intake or grants sender/chat authority.
+export function authorizedMessage(raw: unknown, env: Env, now: number) {
   const update = inputRecord(raw);
   if (
     !update ||
@@ -131,7 +133,7 @@ export function normalizedUpdate(raw: unknown, env: Env, now: number) {
   )
     throw new AppError('Invalid Telegram update.');
   const message = inputRecord(update.message);
-  if (!message || serviceMessage(message)) return null;
+  if (!message) return null;
   const chatInfo = inputRecord(message.chat),
     from = inputRecord(message.from);
   if (
@@ -165,6 +167,13 @@ export function normalizedUpdate(raw: unknown, env: Env, now: number) {
   )
     return null;
   if (message.date * 1000 < now - 7 * DAY) return null;
+  return { update, message, chatInfo, chat, sender };
+}
+
+export function normalizedUpdate(raw: unknown, env: Env, now: number) {
+  const envelope = authorizedMessage(raw, env, now);
+  if (!envelope || serviceMessage(envelope.message)) return null;
+  const { update, message, chatInfo, chat, sender } = envelope;
   let media: NormalizedMedia | null = null;
   let text: string;
   if (typeof message.text === 'string') {
@@ -184,7 +193,7 @@ export function normalizedUpdate(raw: unknown, env: Env, now: number) {
     reaction_album: Object.hasOwn(message, 'media_group_id') ? 1 : 0,
     text,
     media_json: media ? JSON.stringify(media) : null,
-    occurred_at: new Date(message.date * 1000).toISOString(),
+    occurred_at: new Date((message.date as number) * 1000).toISOString(),
     received_at: now,
   };
 }

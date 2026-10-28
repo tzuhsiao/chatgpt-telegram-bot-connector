@@ -50,6 +50,13 @@
       "when": 1792990800000,
       "tag": "0006_message_reactions",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793160000000,
+      "tag": "0007_private_topic_names",
+      "breakpoints": true
     }
   ]
 }

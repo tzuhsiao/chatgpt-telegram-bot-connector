@@ -13,6 +13,7 @@ import { messageMedia } from './media.ts';
 import { sendMessage, setMessageReaction } from './outbound.ts';
 import { toolResult } from './tool-result.ts';
 import { TOOLS } from './tools.ts';
+import { getPrivateTopic, renamePrivateTopic } from './topic-names.ts';
 import type { UntypedJson } from './untyped.ts';
 import { objectArgs } from './validate.ts';
 
@@ -22,7 +23,7 @@ import { objectArgs } from './validate.ts';
 export const PROTOCOL = '2026-07-28';
 
 export async function ownerTool(name: UntypedJson, args: UntypedJson, env: Env, runtime: Runtime) {
-  if (name !== 'get_connector_status') await syncGroupApprovals(env);
+  if (!['get_connector_status', 'get_private_topic'].includes(name)) await syncGroupApprovals(env);
   if (
     [
       'send_message',
@@ -41,6 +42,8 @@ export async function ownerTool(name: UntypedJson, args: UntypedJson, env: Env, 
   else if (name === 'get_recent_messages') result = await recentMessages(args, env, runtime);
   else if (name === 'set_message_reaction') result = await setMessageReaction(args, env, runtime);
   else if (name === 'send_message') result = await sendMessage(args, env, runtime);
+  else if (name === 'get_private_topic') result = await getPrivateTopic(args, env, runtime);
+  else if (name === 'rename_private_topic') result = await renamePrivateTopic(args, env, runtime);
   else if (name === 'configure_telegram_webhook')
     result = await configureWebhook(args, env, runtime);
   else if (name === 'verify_group_access') result = await verifyGroupAccess(args, env, runtime);
@@ -51,7 +54,8 @@ export async function ownerTool(name: UntypedJson, args: UntypedJson, env: Env, 
     ...toolResult(result),
     isError:
       (name === 'send_message' && result.state !== 'sent') ||
-      (name === 'set_message_reaction' && result.state !== 'applied'),
+      (name === 'set_message_reaction' && result.state !== 'applied') ||
+      (name === 'rename_private_topic' && !['applied', 'unchanged'].includes(result.state)),
   };
 }
 
