@@ -77,10 +77,16 @@ test passing, and a new invariant needs a new test.
 | Status, the public page and diagnostics reveal no secrets or private data | `tools`: "status and stored-message reads are owner-only…", "public landing page contains no operational configuration…"; `maintenance`: "MCP diagnostics separate…" |
 | Prompt templates use real tools, valid key formats and documented placeholders | `prompts` |
 
-**Sensitive paths**: `access.ts`, `ingress.ts`, `intake.ts`, `events.ts`,
-`delivery.ts`, `callback*.ts`, `crypto.ts`, `outbound.ts`, `groups.ts`, `media.ts` and
-`image.ts`. A PR touching them states which invariants it affects and which tests
-guard them, and is reviewed by an agent other than its author.
+**Sensitive paths** include `mcp.ts`, `access.ts`, `ingress.ts`, `intake.ts`,
+`events.ts`, `delivery.ts`, `callback*.ts`, `crypto.ts`, `outbound.ts`, `groups.ts`,
+`media.ts` and `image.ts`. Judge sensitivity by the invariants a change can affect,
+including changes outside these paths. A PR affecting an invariant states which
+invariants it affects and which tests guard them.
+
+For each affected invariant, the review records **pass**, **fail** or **unverified**,
+with evidence from the diff and relevant tests. A green CI result alone does not
+establish that an invariant holds. Re-review affected invariants after further
+changes to sensitive logic.
 
 ## Configuration
 
