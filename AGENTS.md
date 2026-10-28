@@ -130,6 +130,8 @@ keys, message text, instance URLs or deployment IDs.
 | `get_recent_messages(chat_id, limit?, message_thread_id?, include_outgoing?)` | Retained messages for one chat/topic, limit 1-20; forum groups need an explicit topic (1 = General); group history is current-epoch only. `include_outgoing` adds confirmed bot text. |
 | `get_message_media(chat_id, message_id, update_id, message_thread_id?, file_index?, mode?)` | Read a retained, currently authorized file: `auto` up to 2,000,000 bytes, `on_demand` up to 8,000,000. Only supported images become model-readable. |
 | `send_message(chat_id, text, idempotency_key, reply_to_message_id?, message_thread_id?)` | Authorized text with durable idempotency. Forum groups need an explicit topic. Quoting is optional. |
+| `get_private_topic(chat_id, message_thread_id)` | Read durable title provenance/revision and busy operation state for one approved private named topic. |
+| `rename_private_topic(chat_id, message_thread_id, name, mode, expected_revision, idempotency_key)` | Revision-guarded exact private-topic title edit, with durable idempotency and uncertainty locks. Automatic mode requires implicit provenance; manual mode needs an explicit owner-directed change. |
 | `set_message_reaction(chat_id, message_id, update_id, reaction, idempotency_key, message_thread_id?)` | Set, change or clear (empty string) this bot's emoji reaction on an exact retained incoming message. Separate from text coverage and keys. |
 | `verify_group_access(chat_id)` | Owner-authorized activation/recovery: checks group metadata, topic mode and this bot's own access, never the human roster. Changes no Telegram settings. |
 | `pause_group_access(chat_id)` | Owner-only durable revocation; fails pending group events. |
@@ -159,6 +161,13 @@ must match exactly. Optional private quotes need a retained target in the same
 context; this also prevents an omitted topic from quoting into a named topic.
 Keep plans/coverage per context and consult other topic history only deliberately
 under applicable authority. No mandatory replies, quotes or topic management.
+
+Private title metadata and edit operation records persist for the installation's
+lifetime; manual provenance and uncertain locks must survive ordinary cleanup.
+Naming rules, Unicode evidence and qualified dispatch/manual-rename race limits:
+[private topic names](docs/private-topic-names.md). `tests/topic-names.test.mjs`
+guards authorization, exact routing, lifecycle/manual precedence, Unicode,
+idempotency, concurrency, uncertainty, restart/cleanup and independent replies.
 
 - The input boundary is the exact approved group ID plus the actual human `from.id`
   (`is_bot: false`, no `sender_chat`). Do not add roster-size, invitation or

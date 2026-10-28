@@ -17,6 +17,7 @@ import { prefetchMedia } from './media.ts';
 import { cleanup } from './retention.ts';
 import { botId, webhookSecret } from './telegram.ts';
 import { incomingThread } from './threads.ts';
+import { observePrivateTopic } from './topic-names.ts';
 import type { UntypedJson } from './untyped.ts';
 import { groupId } from './validate.ts';
 
@@ -43,6 +44,7 @@ export async function telegramWebhook(
     await cleanup(env, runtime.now());
     await syncGroupApprovals(env);
     if (await membershipUpdate(payload, env, runtime)) return json({ ok: true });
+    await observePrivateTopic(payload, env, runtime);
     const groupChat = String(payload.message?.chat?.id);
     const configuredGroups = observedGroups(env).groups;
     if (

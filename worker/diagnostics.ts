@@ -59,8 +59,10 @@ export function diagnostic(
   }
   const send = method === 'tools/call' && name === 'send_message';
   const reaction = method === 'tools/call' && name === 'set_message_reaction';
+  const rename = method === 'tools/call' && name === 'rename_private_topic';
   const readOnly =
-    method === 'tools/call' && ['get_connector_status', 'get_connector_identity'].includes(name);
+    method === 'tools/call' &&
+    ['get_connector_status', 'get_connector_identity', 'get_private_topic'].includes(name);
   let state = send ? 'unknown' : 'not_started',
     safe = false,
     action = 'correct_then_review';
@@ -81,6 +83,22 @@ export function diagnostic(
       outcome.error === 'telegram_401'
         ? 'configuration'
         : ['group_access_blocked', 'telegram_403'].includes(outcome.error)
+          ? 'permission'
+          : state === 'failed'
+            ? 'platform'
+            : 'unknown';
+  } else if (rename && outcome) {
+    state = outcome.state;
+    action = 'reconcile_privately';
+    reason = ['reserved', 'applying'].includes(state)
+      ? 'topic_edit_in_progress'
+      : state === 'uncertain'
+        ? 'topic_edit_outcome_unknown'
+        : 'topic_edit_rejected';
+    category =
+      outcome.error === 'telegram_401'
+        ? 'configuration'
+        : outcome.error === 'telegram_403'
           ? 'permission'
           : state === 'failed'
             ? 'platform'
@@ -112,10 +130,10 @@ export function diagnostic(
     safe = !unsupported;
     action = safe ? 'retry_read_once' : 'correct_then_review';
   } else if (
-    reaction &&
+    (reaction || rename) &&
     [-32700, -32600, -32601, -32602, -32001, -32002, -32003, -32004, -32016].includes(code)
   ) {
-    // These known reaction errors occur before setMessageReaction dispatch.
+    // These known reaction/topic errors occur before the Telegram mutation.
     state = 'not_started';
     action = code === -32003 ? 'reconcile_privately' : 'correct_then_review';
   } else if (send && [-32700, -32600, -32601, -32602, -32001, -32002].includes(code)) {

@@ -28,6 +28,12 @@ New confirmed bot text is also stored separately for seven days and can join
 authorized incoming history via `include_outgoing`; no old Telegram history is
 fetched or reconstructed. Explain this before setup/upgrade consent.
 Link the [retention details](../../../docs/operations.md#retention-privacy-and-maintenance).
+Private topic title metadata and frozen rename operations persist for the
+installation's lifetime, outside inbox/send retention. Disclose title strings,
+topic IDs, provenance/revision, requested titles, hashes, states and timestamps
+before an upgrade. Optional discretionary naming needs the owner's exact-chat
+authorization; [private topic names](../../../docs/private-topic-names.md) is the
+single source for naming semantics, Unicode limits and manual-rename race limits.
 Media intake remains a type/caption receipt. [Hybrid retrieval](../../../docs/media-retrieval.md)
 adds a bounded private ten-minute byte cache (physical deletion is activity-driven)
 and supported image tool results. Disclose byte storage before upgrade consent.

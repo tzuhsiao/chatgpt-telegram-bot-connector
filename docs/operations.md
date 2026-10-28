@@ -332,6 +332,13 @@ For an uncertain operation, inspect the destination chat privately and reconcile
 
 ## Retention, privacy, and maintenance
 
+Private topic title provenance and rename operation records persist for the
+installation's lifetime, outside inbox/send retention. They include topic IDs,
+title strings, frozen requested titles, revision/provenance, hashes, states and
+timestamps. This preserves manual-title protection and uncertain edit locks across
+restarts/expiry. Disclose this before an upgrade; see
+[private topic naming](private-topic-names.md).
+
 Persisted data includes message text and identifiers, subscription state and signing credentials, delivery attempts/state, and outgoing operation records. Restrict database access and review retention before production use. Backups may retain the same sensitive data after the live records are removed.
 
 These connector records are in D1 storage attached to the owner's Site. Bot and
