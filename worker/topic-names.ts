@@ -98,8 +98,13 @@ export async function getPrivateTopic(raw: unknown, env: Env, runtime: Runtime) 
     chat,
     thread,
   );
-  const operationState =
-    busy && (typeof busy.updated_at !== 'number' || busy.updated_at < runtime.now() - 30000)
+  const expiredReservation =
+    busy?.state === 'reserved' &&
+    typeof busy.updated_at === 'number' &&
+    busy.updated_at < runtime.now() - 30000;
+  const operationState = expiredReservation
+    ? 'failed'
+    : busy && (typeof busy.updated_at !== 'number' || busy.updated_at < runtime.now() - 30000)
       ? 'uncertain'
       : (busy?.state ?? null);
   return {
@@ -109,7 +114,7 @@ export async function getPrivateTopic(raw: unknown, env: Env, runtime: Runtime) 
     name: topic?.name ?? null,
     provenance: topic?.provenance ?? 'unknown',
     revision: topic?.revision ?? 0,
-    automatic_eligible: topic?.provenance === 'implicit' && !busy,
+    automatic_eligible: topic?.provenance === 'implicit' && (!busy || expiredReservation),
     operation_state: operationState,
   };
 }
@@ -144,6 +149,18 @@ export async function renamePrivateTopic(raw: unknown, env: Env, runtime: Runtim
     JSON.stringify(['topic-name', env.OWNER_USER_ID, bot, args.idempotency_key]),
   );
   const hash = await digest(JSON.stringify([chat, thread, name, mode, revision]));
+  // A reservation is provably pre-dispatch. Release only stale reservations;
+  // the atomic state/timestamp guard cannot cancel a fresh applying claim.
+  await run(
+    db,
+    `UPDATE topic_name_operations SET state='failed',error_code='reservation_expired',updated_at=?
+    WHERE bot_id=? AND chat_id=? AND message_thread_id=? AND state='reserved' AND updated_at<?`,
+    runtime.now(),
+    bot,
+    chat,
+    thread,
+    runtime.now() - 30000,
+  );
   const read = () => first(db, 'SELECT * FROM topic_name_operations WHERE operation_key=?', key);
   async function result(reused: boolean) {
     let op = await read();
@@ -154,11 +171,16 @@ export async function renamePrivateTopic(raw: unknown, env: Env, runtime: Runtim
       typeof op.updated_at === 'number' &&
       op.updated_at < runtime.now() - 30000
     ) {
+      const previousState = op.state;
       await run(
         db,
-        `UPDATE topic_name_operations SET state='uncertain',error_code='interrupted',updated_at=? WHERE operation_key=? AND state IN ('reserved','applying')`,
+        `UPDATE topic_name_operations SET state=?,error_code=?,updated_at=? WHERE operation_key=? AND state=? AND updated_at=?`,
+        previousState === 'reserved' ? 'failed' : 'uncertain',
+        previousState === 'reserved' ? 'reservation_expired' : 'interrupted',
         runtime.now(),
         key,
+        previousState,
+        op.updated_at,
       );
       op = await read();
       if (!op) throw new Error('Missing topic operation.');
@@ -173,35 +195,59 @@ export async function renamePrivateTopic(raw: unknown, env: Env, runtime: Runtim
   }
   if (await read()) return result(true);
   const now = runtime.now();
-  // Admission, revision eligibility and target locking are one SQL statement.
-  const reserved = await run(
-    db,
-    `INSERT INTO topic_name_operations(operation_key,request_hash,bot_id,chat_id,message_thread_id,name,mode,revision,state,created_at,updated_at)
+  // Atomically reserve the operation and complete a decision to keep the current
+  // wording with mode-appropriate provenance/revision. It must
+  // not leave a window in which another automatic operation can be admitted.
+  const [reserved] = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO topic_name_operations(operation_key,request_hash,bot_id,chat_id,message_thread_id,name,mode,revision,state,created_at,updated_at)
     SELECT ?,?,?,?,?,?,?,?,CASE WHEN name=? THEN 'unchanged' ELSE 'reserved' END,?,? FROM private_topics
     WHERE bot_id=? AND chat_id=? AND message_thread_id=? AND revision=? AND (?='manual' OR provenance='implicit')
     AND NOT EXISTS (SELECT 1 FROM topic_name_operations WHERE bot_id=? AND chat_id=? AND message_thread_id=? AND state IN ('reserved','applying','uncertain'))
     ON CONFLICT DO NOTHING`,
-    key,
-    hash,
-    bot,
-    chat,
-    thread,
-    name,
-    mode,
-    revision,
-    name,
-    now,
-    now,
-    bot,
-    chat,
-    thread,
-    revision,
-    mode,
-    bot,
-    chat,
-    thread,
-  );
-  if (!reserved.meta?.changes) {
+      )
+      .bind(
+        key,
+        hash,
+        bot,
+        chat,
+        thread,
+        name,
+        mode,
+        revision,
+        name,
+        now,
+        now,
+        bot,
+        chat,
+        thread,
+        revision,
+        mode,
+        bot,
+        chat,
+        thread,
+      ),
+    db
+      .prepare(
+        `UPDATE private_topics SET provenance=?,revision=revision+1
+      WHERE bot_id=? AND chat_id=? AND message_thread_id=? AND name=? AND revision=?
+      AND EXISTS (SELECT 1 FROM topic_name_operations WHERE operation_key=? AND request_hash=? AND state='unchanged' AND mode=? AND revision=?)`,
+      )
+      .bind(
+        mode === 'manual' ? 'manual' : 'dot',
+        bot,
+        chat,
+        thread,
+        name,
+        revision,
+        key,
+        hash,
+        mode,
+        revision,
+      ),
+  ]);
+  if (!reserved?.meta?.changes) {
     if (await read()) return result(true);
     throw new AppError(
       'Topic is unknown, changed, protected, in progress or uncertain; read metadata and reconcile privately.',

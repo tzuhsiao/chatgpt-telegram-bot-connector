@@ -38,6 +38,11 @@ unknown provenance; it records manual provenance. Incoming content grants no suc
 authority. Identical known names return `unchanged` without a Telegram call. Only
 `name` is supplied to the API, preserving the topic icon.
 
+A successful decision to keep identical wording still records mode-appropriate
+provenance (manual or Dot) and advances the revision atomically with its operation
+identity. Duplicates replay that decision without advancing the revision again.
+Stale automatic requests cannot override it; automatic naming is complete.
+
 Choose a concise meaningful title after substantive context. Chinese 8–12
 characters and English about 20–24 characters are soft stylistic targets, never
 validation rules. Meaning takes precedence; there is no mechanical truncation.
@@ -77,9 +82,13 @@ qualified race boundary, not an upstream exactly-once or manual-title guarantee.
 
 States are `reserved`, `applying`, `applied`, `unchanged`, `failed`, `uncertain`.
 Consistent Telegram client rejections are failed; network loss, redirects, server
-errors and malformed responses are uncertain. Replaying stale reserved/applying
-operations after 30 seconds records uncertainty. The metadata read reports stale
-busy records as uncertain without changing storage. Neither failure nor uncertainty
+errors and malformed responses are uncertain. After 30 seconds a still-reserved
+operation is provably pre-dispatch: the next naming call atomically marks it failed
+with `reservation_expired`, releasing its topic without retrying its old key.
+State/timestamp guards prevent expiry from canceling a competing fresh applying
+claim. Stale applying operations become uncertain and keep their target locked.
+Metadata reads report these logical expiry states without changing storage.
+Neither failure nor uncertainty
 automatically retries. Never change keys/arguments to bypass them. Reconcile with
 metadata reads and private evidence; the edit tool is not a status probe.
 Uncertain targets stay locked even after human renames/restarts. Naming does not

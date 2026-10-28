@@ -150,6 +150,39 @@ test('manual and unknown provenance fail closed; explicit owner-directed renames
   assert.equal(state.edits.length, 1);
 });
 
+for (const [mode, provenance] of [
+  ['manual', 'manual'],
+  ['automatic', 'dot'],
+]) {
+  test(`${mode} choice of the unchanged implicit title establishes durable protection once`, async (t) => {
+    const { env, worker, state, restart } = await fixture(t);
+    const keep = { ...rename, mode, name: 'Default topic' };
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => call(worker, env, 'rename_private_topic', keep)),
+    );
+    for (const result of results) {
+      assert.equal(data(result).state, 'unchanged');
+      assert.equal(data(result).requires_review, false);
+    }
+    const protectedTitle = await info(restart(), env);
+    assert.equal(protectedTitle.name, 'Default topic');
+    assert.equal(protectedTitle.provenance, provenance);
+    assert.equal(protectedTitle.automatic_eligible, false);
+    assert.equal(protectedTitle.revision, 2);
+    for (const expected_revision of [1, 2]) {
+      const attempted = await call(worker, env, 'rename_private_topic', {
+        ...rename,
+        expected_revision,
+        idempotency_key: 'automatic-after-keep-' + expected_revision,
+      });
+      assert.equal(attempted.body.error?.code, -32003);
+    }
+    assert.equal(data(await call(restart(), env, 'rename_private_topic', keep)).reused, true);
+    assert.deepEqual(await info(worker, env), protectedTitle);
+    assert.equal(state.edits.length, 0);
+  });
+}
+
 test('human rename wins over stale creation, identical names, icon updates and delayed API completion', async (t) => {
   const { env, worker, state, created, restart } = await fixture(t);
   let release, entered;
@@ -243,6 +276,121 @@ test('provenance and uncertain target locks survive ordinary cleanup past thirty
         mode: 'manual',
         expected_revision: 2,
         idempotency_key: 'new-key',
+      })
+    ).body.error,
+  );
+  assert.equal(state.edits.length, 1);
+});
+
+test('expired pre-dispatch reservation fails and releases its topic without resending the old key', async (t) => {
+  const { env, worker, state, restart } = await fixture(t);
+  const entered = Promise.withResolvers(),
+    release = Promise.withResolvers();
+  const prepare = env.DB.prepare.bind(env.DB);
+  let held = false;
+  env.DB.prepare = (sql) => {
+    const statement = prepare(sql);
+    if (!sql.includes("SET state='applying'")) return statement;
+    return {
+      bind(...args) {
+        const bound = statement.bind(...args);
+        return {
+          ...bound,
+          async run() {
+            if (!held) {
+              held = true;
+              entered.resolve();
+              await release.promise;
+            }
+            return bound.run();
+          },
+        };
+      },
+    };
+  };
+  const pending = call(worker, env, 'rename_private_topic', rename);
+  await entered.promise;
+  state.now += 31000;
+  const expired = await info(restart(), env);
+  assert.equal(expired.operation_state, 'failed');
+  assert.equal(expired.automatic_eligible, true);
+  const replacement = { ...rename, idempotency_key: 'replacement-after-expiry' };
+  assert.equal(data(await call(worker, env, 'rename_private_topic', replacement)).state, 'applied');
+  release.resolve();
+  const canceled = data(await pending);
+  assert.equal(canceled.state, 'failed');
+  assert.equal(canceled.error, 'reservation_expired');
+  assert.equal(data(await call(restart(), env, 'rename_private_topic', rename)).reused, true);
+  assert.equal(state.edits.length, 1);
+});
+
+test('reservation expiry cannot cancel a competing fresh applying claim or unlock its uncertainty', async (t) => {
+  const { env, worker, state } = await fixture(t);
+  const claimEntered = Promise.withResolvers(),
+    claimRelease = Promise.withResolvers();
+  const expiryEntered = Promise.withResolvers(),
+    expiryRelease = Promise.withResolvers();
+  const networkEntered = Promise.withResolvers(),
+    networkRelease = Promise.withResolvers();
+  const prepare = env.DB.prepare.bind(env.DB);
+  let claimHeld = false,
+    expiryHeld = false;
+  env.DB.prepare = (sql) => {
+    const statement = prepare(sql);
+    return {
+      bind(...args) {
+        const bound = statement.bind(...args);
+        return {
+          ...bound,
+          async first(...columns) {
+            const row = await bound.first(...columns);
+            if (!claimHeld && row?.state === 'reserved') {
+              claimHeld = true;
+              claimEntered.resolve();
+              await claimRelease.promise;
+            }
+            return row;
+          },
+          async run() {
+            if (
+              !expiryHeld &&
+              state.now > NOW &&
+              sql.includes("error_code='reservation_expired'")
+            ) {
+              expiryHeld = true;
+              expiryEntered.resolve();
+              await expiryRelease.promise;
+            }
+            return bound.run();
+          },
+        };
+      },
+    };
+  };
+  state.hold = async () => {
+    networkEntered.resolve();
+    await networkRelease.promise;
+  };
+  const pending = call(worker, env, 'rename_private_topic', rename);
+  await claimEntered.promise;
+  state.now += 31000;
+  const duplicate = call(worker, env, 'rename_private_topic', rename);
+  await expiryEntered.promise;
+  claimRelease.resolve();
+  await networkEntered.promise;
+  expiryRelease.resolve();
+  assert.equal(data(await duplicate).state, 'applying');
+  assert.equal((await info(worker, env)).operation_state, 'applying');
+  state.now += 31000;
+  assert.equal(data(await call(worker, env, 'rename_private_topic', rename)).state, 'uncertain');
+  networkRelease.resolve();
+  assert.equal(data(await pending).state, 'uncertain');
+  assert.ok(
+    (
+      await call(worker, env, 'rename_private_topic', {
+        ...rename,
+        mode: 'manual',
+        idempotency_key: 'never-bypass-applying',
       })
     ).body.error,
   );
