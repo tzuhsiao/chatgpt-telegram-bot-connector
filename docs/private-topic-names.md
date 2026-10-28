@@ -88,11 +88,15 @@ with `reservation_expired`, releasing its topic without retrying its old key.
 State/timestamp guards prevent expiry from canceling a competing fresh applying
 claim. Stale applying operations become uncertain and keep their target locked.
 Metadata reads report these logical expiry states without changing storage.
-Neither failure nor uncertainty
-automatically retries. Never change keys/arguments to bypass them. Reconcile with
-metadata reads and private evidence; the edit tool is not a status probe.
-Uncertain targets stay locked even after human renames/restarts. Naming does not
-consume reply coverage or gate ordinary authorized intake/replies.
+Neither failure nor uncertainty automatically retries. Never change keys/arguments
+to bypass them. Use metadata reads and private evidence to reconcile outcomes;
+the edit tool is not a status probe, and reconciliation does not clear a lock.
+No runtime tool clears a genuinely post-dispatch uncertain lock, including after
+human renames or restarts. Restoring connector naming for that topic requires a
+separately owner-authorized manual D1 change. That change does not establish that
+the earlier edit never executed; an already-dispatched request may still complete
+late. Normal authorized intake and replies remain unaffected by this naming lock,
+and naming does not consume reply coverage.
 
 ## Persistence and validation
 
