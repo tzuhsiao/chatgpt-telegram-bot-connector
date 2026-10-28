@@ -5,7 +5,21 @@ export function validThread(value: unknown): value is number {
 }
 
 // Topic of an incoming forum-group message: a named topic ID, or 1 for General.
-export function incomingThread(message: Record<string, unknown>, forum: boolean): number | null {
+export function incomingThread(
+  message: Record<string, unknown>,
+  forum: boolean,
+  privateChat = false,
+): number | null {
+  if (privateChat) {
+    if (message.message_thread_id !== undefined && !validThread(message.message_thread_id))
+      throw new AppError('Invalid topic ID.');
+    if (message.is_topic_message !== undefined && typeof message.is_topic_message !== 'boolean')
+      throw new AppError('Invalid topic context.');
+    if (message.is_topic_message === true && message.message_thread_id === undefined)
+      throw new AppError('Private topic ID is required.');
+    // Preserve the wire ID; General normally omits both fields in the Bot API.
+    return message.message_thread_id ?? null;
+  }
   if (!forum) return null;
   if (message.message_thread_id !== undefined && !validThread(message.message_thread_id))
     throw new AppError('Invalid topic ID.');
@@ -21,13 +35,15 @@ export function incomingThread(message: Record<string, unknown>, forum: boolean)
   return 1;
 }
 
-// Topic requested by a tool call: required for forum groups, refused elsewhere.
+// Private topics are explicit and optional; forum groups still require a topic.
 export function requestedThread(
   args: Record<string, unknown>,
   group: { is_forum?: unknown } | null | undefined,
+  privateChat = false,
 ): number | null {
   if (args.message_thread_id !== undefined && !validThread(args.message_thread_id))
     throw new AppError('Invalid topic ID.');
+  if (privateChat) return args.message_thread_id ?? null;
   if (group?.is_forum === 1) {
     if (args.message_thread_id === undefined)
       throw new AppError('Forum groups require message_thread_id; use 1 for General.');
@@ -37,4 +53,14 @@ export function requestedThread(
   if (args.message_thread_id !== undefined)
     throw new AppError('Topic routing is supported only for verified forum groups.');
   return null;
+}
+
+// Private General may be serialized without an ID. Null and 1 select the same
+// context there, while stored/event IDs remain unchanged. SQL is fixed here,
+// never derived from user input. Group General keeps its existing explicit 1.
+export function threadScope(thread: number | null, privateChat: boolean) {
+  return {
+    column: privateChat ? 'COALESCE(message_thread_id,1)' : 'message_thread_id',
+    value: privateChat ? (thread ?? 1) : thread,
+  };
 }

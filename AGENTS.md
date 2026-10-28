@@ -47,8 +47,8 @@ setup or a test pass.
 One Site hosts an MCP Worker and D1 database for one owner and one dedicated
 Telegram bot. It delivers private-chat and approved private-group text and media
 receipts as events, and exposes authorized tools for text sends, reactions, retained
-history and image reads; the host runs the model. Approved supergroups may use
-Topics. Out of scope: a human Telegram login, public groups, channels, polling,
+history and image reads; the host runs the model. Private bot chats and approved
+supergroups may use Topics. Out of scope: a human Telegram login, public groups, channels, polling,
 transcription or video analysis, attachment execution, outgoing media, an extra
 inference API and a second relay service.
 
@@ -76,6 +76,12 @@ test passing, and a new invariant needs a new test.
 | Media reads re-check retained-message authorization; untrusted bytes never become model images | `media-retrieval`: "retained message authorization rejects…", "untrusted binary and dimension bombs…"; `image-type` |
 | Status, the public page and diagnostics reveal no secrets or private data | `tools`: "status and stored-message reads are owner-only…", "public landing page contains no operational configuration…"; `maintenance`: "MCP diagnostics separate…" |
 | Prompt templates use real tools, valid key formats and documented placeholders | `prompts` |
+
+Private topic routing is guarded by `tests/private-topics.test.mjs`: actual IDs
+survive normalization/storage/signed events and duplicates; named-topic history,
+quotes, media/reactions and sends stay in context; ambiguous destinations never
+fall back or retry. Private General/no-ID equivalence does not broaden named-topic
+access. These are affected invariants for any change to private topic handling.
 
 **Sensitive paths** include `mcp.ts`, `access.ts`, `ingress.ts`, `intake.ts`,
 `events.ts`, `delivery.ts`, `callback*.ts`, `crypto.ts`, `outbound.ts`, `groups.ts`,
@@ -139,6 +145,20 @@ generic receipt without inspecting raw fields. Details:
 [reactions](docs/message-reactions.md).
 
 ## Groups and topics
+
+Private-chat Topics / Threaded Mode requires the owner to enable Topics for the
+dedicated bot in [BotFather](https://core.telegram.org/bots/features#topics-in-private-chats).
+Source changes do not enable it. Setup and policy upgrades follow
+[the setup skill](.agents/skills/telegram-bot-connector-setup/SKILL.md).
+Private events preserve actual `message_thread_id`; carry that ID into history,
+media/reaction targets and frozen sends. Omission reads only unthreaded/General
+private history, never all topics. Private General may arrive without an ID;
+omission and explicit 1 select that same context. Private sends pass explicit 1
+unchanged and accept Telegram's ID-less General response. Named-topic responses
+must match exactly. Optional private quotes need a retained target in the same
+context; this also prevents an omitted topic from quoting into a named topic.
+Keep plans/coverage per context and consult other topic history only deliberately
+under applicable authority. No mandatory replies, quotes or topic management.
 
 - The input boundary is the exact approved group ID plus the actual human `from.id`
   (`is_bot: false`, no `sender_chat`). Do not add roster-size, invitation or

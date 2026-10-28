@@ -158,6 +158,39 @@ test('slow background download cannot block receipt or change its callback paylo
   assert.equal(data(await f.read()).state, 'ready');
 });
 
+test('private named-topic image prefetch keeps exact context through cache hits and revocation', async (t) => {
+  const f = await fixture(t, { forum: true });
+  assert.equal((await f.receive()).status, 200);
+  await f.drain();
+  assert.equal(f.state.events[0].data.message_thread_id, 7);
+  for (const message_thread_id of [undefined, 1, 8])
+    assert.ok((await f.read({ message_thread_id })).body.error);
+  const result = await f.read({ mode: 'auto' });
+  assert.equal(data(result).state, 'ready');
+  assert.deepEqual(result.body.result.content[1], {
+    type: 'image',
+    mimeType: 'image/png',
+    data: PNG.toString('base64'),
+  });
+  assert.equal(f.state.downloads, 1);
+  f.env.TELEGRAM_ALLOWED_USER_IDS = '20002';
+  assert.ok((await f.read()).body.error);
+  assert.equal(f.state.downloads, 1);
+});
+
+test('private General media accepts ID 1 or omission and rechecks its raw retained identity', async (t) => {
+  for (const wireThread of [undefined, 1]) {
+    const f = await fixture(t);
+    if (wireThread !== undefined) f.payload.message.message_thread_id = wireThread;
+    await f.receive();
+    await f.drain();
+    for (const message_thread_id of [undefined, 1])
+      assert.equal(data(await f.read({ message_thread_id, mode: 'auto' })).state, 'ready');
+    assert.ok((await f.read({ message_thread_id: 7 })).body.error);
+    assert.equal(f.state.downloads, 1);
+  }
+});
+
 test('only known-size ordinary photos and explicit static stickers prefetch', async (t) => {
   for (const fields of [
     { photo: [{ file_id: 'photo_1', file_unique_id: 'unique_1' }] },

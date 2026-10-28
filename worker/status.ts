@@ -6,7 +6,7 @@ import type { Env, Runtime } from './env.ts';
 import { AppError } from './errors.ts';
 import { checkGroup, groupCurrent } from './groups.ts';
 import { botId } from './telegram.ts';
-import { requestedThread, validThread } from './threads.ts';
+import { requestedThread, threadScope } from './threads.ts';
 import type { UntypedJson } from './untyped.ts';
 import { groupId, objectArgs } from './validate.ts';
 
@@ -145,19 +145,15 @@ export async function recentMessages(args: UntypedJson, env: Env, runtime: Runti
     throw new AppError('Limit must be between 1 and 20.');
   if (args.include_outgoing !== undefined && typeof args.include_outgoing !== 'boolean')
     throw new AppError('include_outgoing must be boolean.');
-  if (
-    args.message_thread_id !== undefined &&
-    (!groupId(chat) || !validThread(args.message_thread_id))
-  )
-    throw new AppError('A valid forum group topic ID is required.');
   if (!groupId(chat) && !allowlist(env.TELEGRAM_ALLOWED_USER_IDS).has(chat))
     throw new AppError('Sender access has been revoked.', 403, -32001);
   const group = groupId(chat) ? await checkGroup(chat, env, runtime) : null;
-  const thread = requestedThread(args, group),
+  const thread = requestedThread(args, group, !groupId(chat)),
     db = requireDatabase(env),
     bot = botId(env),
     cutoff = runtime.now() - 7 * DAY,
     revision = group?.revision ?? null;
+  const scope = threadScope(thread, !groupId(chat));
   // checkGroup above already required an approved group's sender pair to exist.
   const senders = (group ? groupConfig(env).get(chat) : [chat, null]) as (string | null)[];
   let messages: UntypedJson[];
@@ -166,16 +162,16 @@ export async function recentMessages(args: UntypedJson, env: Env, runtime: Runti
       db,
       `SELECT event_id,update_id,chat_id,sender_id,message_id,message_thread_id,text,media_json,occurred_at,state,last_error,role FROM (
       SELECT event_id,update_id,chat_id,sender_id,message_id,message_thread_id,text,media_json,occurred_at,state,last_error,'user' AS role FROM inbox
-      WHERE chat_id=? AND bot_id=? AND received_at>=? AND (? IS NULL OR group_revision=?) AND message_thread_id IS ? AND sender_id IN (?,?)
+      WHERE chat_id=? AND bot_id=? AND received_at>=? AND (? IS NULL OR group_revision=?) AND ${scope.column} IS ? AND sender_id IN (?,?)
       UNION ALL SELECT NULL,NULL,chat_id,bot_id,message_id,message_thread_id,text,NULL,occurred_at,'sent',NULL,'bot' FROM sent_messages
-      WHERE chat_id=? AND bot_id=? AND sent_at>=? AND (? IS NULL OR group_revision=?) AND message_thread_id IS ?)
+      WHERE chat_id=? AND bot_id=? AND sent_at>=? AND (? IS NULL OR group_revision=?) AND ${scope.column} IS ?)
       ORDER BY message_id DESC LIMIT ?`,
       chat,
       bot,
       cutoff,
       revision,
       revision,
-      thread,
+      scope.value,
       senders[0],
       senders[1],
       chat,
@@ -183,24 +179,25 @@ export async function recentMessages(args: UntypedJson, env: Env, runtime: Runti
       cutoff,
       revision,
       revision,
-      thread,
+      scope.value,
       limit,
     );
   } else {
     messages = await rows(
       db,
-      'SELECT event_id,update_id,chat_id,sender_id,message_id,text,media_json,occurred_at,state,last_error,message_thread_id FROM inbox WHERE chat_id=? AND bot_id=? AND received_at>=? AND (? IS NULL OR group_revision=?) AND message_thread_id IS ? AND sender_id IN (?,?) ORDER BY received_at DESC,update_id DESC LIMIT ?',
+      `SELECT event_id,update_id,chat_id,sender_id,message_id,text,media_json,occurred_at,state,last_error,message_thread_id FROM inbox WHERE chat_id=? AND bot_id=? AND received_at>=? AND (? IS NULL OR group_revision=?) AND ${scope.column} IS ? AND sender_id IN (?,?) ORDER BY received_at DESC,update_id DESC LIMIT ?`,
       chat,
       bot,
       cutoff,
       revision,
       revision,
-      thread,
+      scope.value,
       senders[0],
       senders[1],
       limit,
     );
-    if (thread === null) for (const message of messages) delete message.message_thread_id;
+    for (const message of messages)
+      if (message.message_thread_id === null) delete message.message_thread_id;
   }
   for (const message of messages) {
     if (message.media_json) message.media = JSON.parse(message.media_json);

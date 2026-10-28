@@ -149,7 +149,7 @@ test('reaction rejects unsupported emoji, malformed arguments, nonowner and unre
     { update_id: 43 },
     { message_id: 0 },
     { update_id: -1 },
-    { message_thread_id: 1 },
+    { message_thread_id: 80 },
     { idempotency_key: '' },
     { is_big: true },
   ]) {

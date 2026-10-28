@@ -54,7 +54,7 @@ unanswered question is not completed merely because it received an emoji or a ne
 message arrived. Retain it, include it in a later coherent answer, seek clarification,
 or record an explicit owner cancellation. Do not silently discard it.
 
-When several validated messages have already arrived, the Dot may answer them
+When several validated messages in the same chat/topic have already arrived, the Dot may answer them
 coherently together. It does not wait for more messages or fill identifier gaps.
 Before grouping, consult coverage/active plans and reserve each included message
 under one serialized planner. Coverage must be authoritative across overlapping
@@ -69,6 +69,61 @@ requests. Do not invent a storage service or assume an expiring key is sufficien
 This limitation does not disable the connector's separately authorized direct tools.
 
 ## Frozen send identity
+
+### Private topics
+
+Private bot Topics / Threaded Mode uses the same chat-scoped subscription and
+allowlists. The BotFather prerequisite and activation procedure live in
+[the setup skill](../.agents/skills/telegram-bot-connector-setup/SKILL.md#optional-private-chat-topics--threaded-mode).
+Actual incoming `message_thread_id` is preserved in storage and events. Carry it
+into history, sends, media/reaction targets and frozen coverage. Keep named-topic
+plans separate; consult another topic deliberately only with applicable authority.
+Neither replying to every message nor quoting is mandatory.
+
+`get_recent_messages` with a named ID returns only that context, including
+confirmed bot text when `include_outgoing: true` is requested. Omission never means
+all topics: it selects ordinary unthreaded/General private history. Telegram's
+General topic (1) may omit its ID on the wire, so 1 and omission select that same
+history context. Actual stored/event IDs remain unchanged. A private send with
+explicit 1 passes it to Telegram and accepts an ID-less General result; a named
+topic must be echoed exactly. A rejection or ambiguous destination never falls
+back or automatically retries. No new migration is needed beyond the existing
+topic/history schema.
+
+The wire rules above were checked against official source on 2026-10-28:
+
+- TDLib's [private-message topic classification](https://github.com/tdlib/td/blob/4c6377aa7386c39217878a9a56d581922ad37ca4/td/telegram/MessageTopic.cpp#L21-L79)
+  makes private bot topics forum topics; ordinary private replies do not create
+  reply threads. Its [outbound topic validation](https://github.com/tdlib/td/blob/4c6377aa7386c39217878a9a56d581922ad37ca4/td/telegram/MessageTopic.cpp#L148-L174)
+  accepts ordinary message threads only for eligible supergroups.
+- Bot forums use the same General topic defined as 1 by
+  [ForumTopicId::general](https://github.com/tdlib/td/blob/4c6377aa7386c39217878a9a56d581922ad37ca4/td/telegram/ForumTopicId.h).
+  The [forum specification](https://core.telegram.org/api/forum#bot-forums) reserves
+  General; named topics have other IDs. The Bot API's
+  [get_forum_topic_id / is_topic_message serialization](https://github.com/tdlib/telegram-bot-api/blob/e3e9dd8e5b3d7ab8537cd5a10dc31d5ffa8f82d1/telegram-bot-api/Client.cpp#L19963-L20031)
+  omits the General ID and named-topic flag, including for private bot chats.
+- The Bot API's [check_message_topic](https://github.com/tdlib/telegram-bot-api/blob/e3e9dd8e5b3d7ab8537cd5a10dc31d5ffa8f82d1/telegram-bot-api/Client.cpp#L8926-L8961)
+  rejects explicit 1 only in its forum-supergroup branch. Private topics go
+  through topic lookup, so private sends preserve explicit 1 while group General
+  sends omit it. This does not guarantee that an unavailable topic accepts a send.
+
+These pinned checks support the routing contract; they do not establish the
+installed Telegram/hosting behavior. The setup skill's private-topic acceptance
+must inspect actual omitted-ID, explicit-1 and named-topic send responses.
+
+Normal topic sends omit `reply_to_message_id`. An optional private quote must now
+target a retained incoming or confirmed-bot message in the exact context. This
+also prevents a no-ID send from quoting into a named topic. Unknown, expired,
+revoked or cross-topic targets fail before dispatch. Existing successful keys
+still replay their recorded result without a new send; pending/uncertain old
+plans keep their original arguments and require private reconciliation.
+
+For a new named private topic plan use
+`tg-topic:v1:<chat_id>:<thread_id>:<anchor_message_id>:<kind>:<part>` with the same
+deterministic anchor, coverage and part rules below. General/no-ID plans retain
+the ordinary private namespace. Never convert an existing plan's namespace,
+topic or quote choice during recovery. Accepted callbacks and model coverage
+remain separate from transport deduplication; verify hosted behavior privately.
 
 Normal sends omit optional `reply_to_message_id`, producing no Telegram quote.
 The tool already supports that omission. Explicitly authorized exceptions and

@@ -9,7 +9,7 @@ import { MAX_BODY, readJson } from './http.ts';
 import { imageType } from './image.ts';
 import { mediaId } from './intake.ts';
 import { botId } from './telegram.ts';
-import { requestedThread, validThread } from './threads.ts';
+import { requestedThread, threadScope, validThread } from './threads.ts';
 import { toolResult } from './tool-result.ts';
 import type { UntypedJson } from './untyped.ts';
 import { groupId, objectArgs } from './validate.ts';
@@ -72,18 +72,19 @@ export async function mediaContext(
   )
     throw new AppError('Invalid media context.');
   const group = groupId(chat) ? (ingressGroup ?? (await checkGroup(chat, env, runtime))) : null;
-  const thread = requestedThread(args, group),
+  const thread = requestedThread(args, group, !groupId(chat)),
     db = requireDatabase(env);
+  const scope = threadScope(thread, !groupId(chat));
   const record: UntypedJson = await first(
     db,
-    'SELECT * FROM inbox WHERE bot_id=? AND chat_id=? AND message_id=? AND update_id=? AND message_thread_id IS ?',
+    `SELECT * FROM inbox WHERE bot_id=? AND chat_id=? AND message_id=? AND update_id=? AND ${scope.column} IS ?`,
     botId(env),
     chat,
     args.message_id,
     args.update_id,
-    thread,
+    scope.value,
   );
-  const context = { record, group, thread, index, mode };
+  const context = { record, group, thread: record?.message_thread_id, index, mode };
   await assertMediaContext(context, env, runtime);
   let media;
   try {

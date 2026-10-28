@@ -14,7 +14,7 @@ export const THREAD_SCHEMA = {
   minimum: 1,
   maximum: Number.MAX_SAFE_INTEGER,
   description:
-    'Explicit forum group topic: 1 selects General; other IDs come from actual received topic events. Required for forum sends/history. Private topics are unsupported.',
+    'Exact private-chat or verified forum-group topic ID from actual events. Required for forum groups (1 = General). In private chats, omission or 1 selects only the unthreaded/General context, never all topics.',
 };
 
 // Telegram ReactionTypeEmoji, checked against official Bot API on 2026-10-26.
