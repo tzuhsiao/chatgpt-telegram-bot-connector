@@ -7,7 +7,7 @@ import { AppError } from './errors.ts';
 import { checkGroup, groupCurrent } from './groups.ts';
 import { REACTION_EMOJI } from './schemas.ts';
 import { botId, telegramApi } from './telegram.ts';
-import { incomingThread, requestedThread, validThread } from './threads.ts';
+import { incomingThread, requestedThread, threadScope, validThread } from './threads.ts';
 import type { UntypedJson } from './untyped.ts';
 import { groupId, objectArgs } from './validate.ts';
 
@@ -39,11 +39,8 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
     (!Number.isSafeInteger(args.reply_to_message_id) || args.reply_to_message_id <= 0)
   )
     throw new AppError('Invalid reply message ID.');
-  if (
-    args.message_thread_id !== undefined &&
-    (!groupId(chat) || !validThread(args.message_thread_id))
-  )
-    throw new AppError('A valid forum group topic ID is required.');
+  if (args.message_thread_id !== undefined && !validThread(args.message_thread_id))
+    throw new AppError('A valid topic ID is required.');
   const db = requireDatabase(env);
   const operationKey = await digest(
     JSON.stringify([env.OWNER_USER_ID, botId(env), args.idempotency_key]),
@@ -94,31 +91,34 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
       blocked = true;
     }
   }
-  const thread = blocked ? null : requestedThread(args, group);
-  if (!blocked && group?.is_forum && args.reply_to_message_id !== undefined) {
+  const thread = blocked ? null : requestedThread(args, group, !groupId(chat));
+  const scope = threadScope(thread, !groupId(chat));
+  if (!blocked && (group?.is_forum || !groupId(chat)) && args.reply_to_message_id !== undefined) {
     // checkGroup above already required this group to be approved.
-    const senders = groupConfig(env).get(chat) as string[];
+    const senders = group ? (groupConfig(env).get(chat) as string[]) : [chat, null];
     const target = await first(
       db,
-      `SELECT message_id FROM inbox WHERE bot_id=? AND chat_id=? AND message_id=? AND message_thread_id=? AND group_revision=? AND received_at>=? AND sender_id IN (?,?)
-      UNION ALL SELECT message_id FROM sent_messages WHERE bot_id=? AND chat_id=? AND message_id=? AND message_thread_id=? AND group_revision=? AND sent_at>=? LIMIT 1`,
+      `SELECT message_id FROM inbox WHERE bot_id=? AND chat_id=? AND message_id=? AND ${scope.column} IS ? AND group_revision IS ? AND received_at>=? AND sender_id IN (?,?)
+      UNION ALL SELECT message_id FROM sent_messages WHERE bot_id=? AND chat_id=? AND message_id=? AND ${scope.column} IS ? AND group_revision IS ? AND sent_at>=? LIMIT 1`,
       botId(env),
       chat,
       args.reply_to_message_id,
-      thread,
-      group.revision,
+      scope.value,
+      group?.revision ?? null,
       runtime.now() - 7 * DAY,
       senders[0],
       senders[1],
       botId(env),
       chat,
       args.reply_to_message_id,
-      thread,
-      group.revision,
+      scope.value,
+      group?.revision ?? null,
       runtime.now() - 7 * DAY,
     );
     if (!target)
-      throw new AppError('Quoted target must be retained in this exact topic and approval epoch.');
+      throw new AppError(
+        'Quoted target must be retained in this exact chat/topic and approval epoch.',
+      );
   }
   const now = runtime.now();
   const inserted = await run(
@@ -180,7 +180,7 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
     text: args.text,
     link_preview_options: { is_disabled: true },
   };
-  if (thread !== null && thread !== 1) body.message_thread_id = thread;
+  if (thread !== null && (!group || thread !== 1)) body.message_thread_id = thread;
   if (args.reply_to_message_id !== undefined)
     body.reply_parameters = {
       message_id: args.reply_to_message_id,
@@ -194,7 +194,11 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
       String(message.chat?.id) !== chat
     )
       throw new Error('Ambiguous API response.');
-    if (group?.is_forum && incomingThread(message, true) !== thread)
+    if (
+      (group?.is_forum || !groupId(chat)) &&
+      threadScope(incomingThread(message, group?.is_forum === 1, !groupId(chat)), !groupId(chat))
+        .value !== scope.value
+    )
       throw new Error('Ambiguous topic destination.');
     const sentAt = runtime.now();
     const saved = await db.batch([
@@ -269,15 +273,16 @@ export async function setMessageReaction(args: UntypedJson, env: Env, runtime: R
   )
     throw new AppError('A stable ASCII idempotency key is required.');
   const group = groupId(chat) ? await checkGroup(chat, env, runtime) : null;
-  const thread = requestedThread(args, group);
+  const thread = requestedThread(args, group, !groupId(chat));
+  const scope = threadScope(thread, !groupId(chat));
   const record: UntypedJson = await first(
     db,
-    'SELECT * FROM inbox WHERE bot_id=? AND chat_id=? AND message_id=? AND update_id=? AND message_thread_id IS ?',
+    `SELECT * FROM inbox WHERE bot_id=? AND chat_id=? AND message_id=? AND update_id=? AND ${scope.column} IS ?`,
     bot,
     chat,
     args.message_id,
     args.update_id,
-    thread,
+    scope.value,
   );
   async function authorizedTarget() {
     if (
@@ -297,7 +302,7 @@ export async function setMessageReaction(args: UntypedJson, env: Env, runtime: R
       args.message_id,
       args.update_id,
       record.sender_id,
-      thread,
+      record.message_thread_id,
       record.group_revision,
       runtime.now() - 7 * DAY,
       record.media_json,

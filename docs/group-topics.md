@@ -20,9 +20,9 @@ answer, acknowledge, combine already-arrived messages in a topic, or stay silent
   `message_thread_id`, including **1 for General**. Omitting it fails before send
   rather than silently moving a named-topic reply into General. For General the
   connector omits the Bot API thread argument; named topics pass their ID.
-- Non-forum private/group calls retain their old behavior and omit this argument.
-  Ordinary non-forum reply threads do not become forum topics. Explicit private
-  topic messages/sends are unsupported here; issue #15 remains separate.
+- Non-forum group calls retain their old behavior and omit this argument.
+  Ordinary non-forum group reply threads do not become forum topics. Private
+  bot topics use their actual IDs; see [private conversation](normal-chat.md#private-topics).
 - Normal sends omit `reply_to_message_id`, so topic routing does not require a
   quote. If a quote is explicitly selected in a forum, its target must be retained
   in this exact chat, topic and access epoch. Unknown or cross-topic targets fail.

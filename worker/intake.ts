@@ -4,6 +4,7 @@ import type { Env } from './env.ts';
 import { AppError } from './errors.ts';
 import { MEDIA_TYPES } from './schemas.ts';
 import { botId } from './telegram.ts';
+import { incomingThread } from './threads.ts';
 import type { UntypedJson } from './untyped.ts';
 import { groupId, numericId } from './validate.ts';
 
@@ -153,7 +154,6 @@ export function normalizedUpdate(raw: unknown, env: Env, now: number) {
     return null;
   if ((chatInfo.type === 'private') !== numericId(chat) || !senderAllowed(chat, sender, env))
     return null;
-  if (!groupId(chat) && message.is_topic_message === true) return null;
   if (
     typeof message.message_id !== 'number' ||
     !Number.isSafeInteger(message.message_id) ||
@@ -180,6 +180,7 @@ export function normalizedUpdate(raw: unknown, env: Env, now: number) {
     chat_id: chat,
     sender_id: sender,
     message_id: message.message_id,
+    message_thread_id: chatInfo.type === 'private' ? incomingThread(message, false, true) : null,
     reaction_album: Object.hasOwn(message, 'media_group_id') ? 1 : 0,
     text,
     media_json: media ? JSON.stringify(media) : null,

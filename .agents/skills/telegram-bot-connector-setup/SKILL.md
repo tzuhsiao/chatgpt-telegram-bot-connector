@@ -200,6 +200,37 @@ anchor and authoritative private coverage checks, with no timer/polling/batch wa
 The template adds no shared-state service or durable model queue. Store the filled
 prompt privately.
 
+### Optional private-chat Topics / Threaded Mode
+
+Private topics require the owner to enable Topics for this dedicated bot through
+[BotFather](https://core.telegram.org/bots/features#topics-in-private-chats).
+Explain this prerequisite; source development or setup consent alone does not
+authorize changing that setting. No topic-management tool or extra bot rights are
+needed for routing. Do not infer enablement from a successful ordinary send.
+
+Before activation, obtain approval to update the existing private task from
+[the private prompt](../../../prompts/private-chat.md), preserving its identity,
+enabled state, full chat-scoped trigger set and frozen plans. One subscription
+delivers all topics; do not create a responder/subscription per topic. Keep actual
+event IDs and optional `message_thread_id` in private task context, history,
+media/reaction targets, coverage and sends. Named topics must stay separate, with
+no automatic combination into one reply. Other topic context can be consulted
+deliberately under applicable authority; replies and quotes remain discretionary.
+
+Telegram General may omit the topic ID: omission and explicit 1 select the same
+unthreaded/General private history, never all topics. Preserve actual wire IDs;
+do not invent a named topic from history. For new named-topic plans use the
+documented topic key namespace; old plans retain all original keys and arguments.
+Private quotes now need a retained same-context target, so a missing topic cannot
+quote into another topic. Reconcile older pending/uncertain quoted plans before
+upgrade; never replay with a new key to evade a rejected target.
+
+With separate test-message consent, verify two named private topics and General:
+actual callbacks retain context, history excludes other topics, normal sends need
+no quote, and duplicates/uncertain outcomes preserve frozen operations. Local
+tests do not prove BotFather state or hosted task execution. Do not change live
+tasks, BotFather settings or deployments during source development.
+
 ### Optional approved private group
 
 Follow [group input and delivery](../../../docs/group-chat.md). The input boundary
@@ -244,8 +275,9 @@ planner covers personal setup, not group readiness or audience privacy.
 For Topics, follow [routing/history](../../../docs/group-topics.md). Preserve each
 actual event's explicit topic in task context, bounded history and frozen sends;
 use 1 for General. Keep plans/coverage per topic, with no automatic cross-topic
-combination or mandatory quoting/replies. No topic-management rights or BotFather
-private-thread setting are required; private-topic issue #15 remains unimplemented.
+combination or mandatory quoting/replies. Group Topics need no topic-management
+rights or BotFather private-thread setting; the optional private-chat procedure
+above has its own BotFather prerequisite.
 
 Explain retained history and storage before setup/upgrade consent. Optional
 include_outgoing adds new confirmed bot text with sender/role; it cannot reconstruct

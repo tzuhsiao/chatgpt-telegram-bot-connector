@@ -281,7 +281,7 @@ test('malformed named-topic ingress is rejected rather than rerouted to General'
   assert.equal(state.events.length, 0);
 });
 
-test('ordinary non-forum reply threads stay unthreaded and private topics remain unsupported', async (t) => {
+test('ordinary non-forum group reply threads stay unthreaded and reject explicit topic sends', async (t) => {
   const { env, worker, state } = await fixture(t, { forum: false });
   await subscribe(worker, env);
   const ordinary = incoming(50);
@@ -300,15 +300,6 @@ test('ordinary non-forum reply threads stay unthreaded and private topics remain
     'sent',
   );
   assert.ok((await call(worker, env, 'send_message', args)).body.error);
-  const privateTopic = update(60);
-  privateTopic.message.is_topic_message = true;
-  privateTopic.message.message_thread_id = 70;
-  await worker.fetch(telegramRequest(privateTopic), env);
-  assert.equal(
-    (await env.DB.prepare("SELECT COUNT(*) AS n FROM inbox WHERE chat_id='10001'").first()).n,
-    0,
-  );
-  assert.ok((await call(worker, env, 'send_message', { ...args, chat_id: '10001' })).body.error);
 });
 
 test('forum mode changes and bot access failures pause access and hide prior-epoch topic history', async (t) => {

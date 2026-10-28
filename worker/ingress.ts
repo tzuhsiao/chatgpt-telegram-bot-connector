@@ -109,7 +109,9 @@ export async function telegramWebhook(
       await pauseForUpdate(groupChat, payload.update_id, 'group_mode_changed', env, runtime);
       return json({ ok: true, ignored: true });
     }
-    const thread = incomingThread(payload.message, group?.is_forum === 1);
+    const thread = group
+      ? incomingThread(payload.message, group.is_forum === 1)
+      : message.message_thread_id;
     const eventId = `tg_${message.bot_id}_${message.update_id}`;
     if (group) await groupCurrent(group, env);
     await run(
