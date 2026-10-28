@@ -70,6 +70,17 @@ async function fixture(t, implicit = true) {
 }
 const info = (w, e, t = target) => call(w, e, 'get_private_topic', t).then(data);
 
+test('topic metadata read has no unrelated group revocation side effects', async (t) => {
+  const { env, worker } = await fixture(t);
+  await env.DB.prepare(
+    `INSERT INTO group_access(bot_id,chat_id,config_hash,revision,state) VALUES ('123456','-1001234567890','old-config',1,'active')`,
+  ).run();
+  const before = env.DB.sqlite.prepare('SELECT total_changes() AS n').get().n;
+  assert.equal((await info(worker, env)).provenance, 'implicit');
+  assert.equal(env.DB.sqlite.prepare('SELECT total_changes() AS n').get().n, before);
+  assert.equal((await env.DB.prepare('SELECT state FROM group_access').first()).state, 'active');
+});
+
 test('implicit private topic metadata survives restart without becoming conversational intake', async (t) => {
   const { env, worker, restart, created } = await fixture(t);
   const first = await info(worker, env);

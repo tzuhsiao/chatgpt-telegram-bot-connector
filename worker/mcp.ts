@@ -23,7 +23,7 @@ import { objectArgs } from './validate.ts';
 export const PROTOCOL = '2026-07-28';
 
 export async function ownerTool(name: UntypedJson, args: UntypedJson, env: Env, runtime: Runtime) {
-  if (name !== 'get_connector_status') await syncGroupApprovals(env);
+  if (!['get_connector_status', 'get_private_topic'].includes(name)) await syncGroupApprovals(env);
   if (
     [
       'send_message',
