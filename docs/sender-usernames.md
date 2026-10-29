@@ -38,5 +38,11 @@ retained metadata before installation/upgrade consent through the
 [setup skill](../.agents/skills/telegram-bot-connector-setup/SKILL.md); see
 [privacy and retention](operations.md#retention-privacy-and-maintenance).
 
+Upgrade completion also requires the supported discovery refresh and separately
+consented username-bearing event/history verification in the
+[setup skill](../.agents/skills/telegram-bot-connector-setup/SKILL.md#username-metadata-upgrades).
+Host schema caching/enforcement is unverified; do not assume subscription recreation
+is needed or sufficient to refresh discovery.
+
 This change does not add Telegram entities, parse modes or ID-based mentions to
 `send_message`. It does not change tool/event names, routing or permissions.

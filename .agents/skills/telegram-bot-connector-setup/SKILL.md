@@ -168,6 +168,26 @@ updates. One subscription alone does not prove the correct single enabled task.
 Stale/duplicate tasks, unknown operations or mismatched subscribers require
 reconciliation before creating or activating another responder.
 
+### Username metadata upgrades
+
+Before declaring this upgrade complete, refresh the existing plugin's tool/event
+discovery through supported host controls and verify genuine event discovery
+advertises optional `sender_username`. This repository does not establish whether
+a host caches or enforces earlier payload schemas. Preserve the Site, plugin,
+task and complete trigger set; do not blindly recreate subscriptions. If the host
+requires reconnecting or renewing, reconcile the exact existing subscription and
+operation state and obtain applicable approval before that mutation. Unavailable
+refresh/discovery remains a verification gap.
+
+With separate test-message and history-read consent, have an authorized sender
+with a username send one fresh message in the exact approved chat/topic. Privately
+verify the actual delivered event includes the observed `sender_username` for the
+correct `sender_id`, and compare that same retained message through
+`get_recent_messages`. Record discovery, callback acceptance, task event consumption
+and the event/history match separately. Without a username-bearing sample, leave
+that acceptance gate unverified; never infer or backfill a handle. Source/CI tests
+alone do not establish these hosted results.
+
 ## 4. Connect the bot and verify conversation
 
 After the gates pass, complete protected secret assignment and verify the applied
