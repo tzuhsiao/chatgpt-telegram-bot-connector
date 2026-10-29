@@ -18,7 +18,7 @@ the bridge lets your dot receive the message and reply there. It runs on Sites,
 so your computer does not need to stay on. The Site hosts the bridge and storage;
 the plugin gives your dot the tools to use it."
 
-Explain that incoming text/captions, bounded media metadata/IDs, subscriptions and
+Explain that incoming text/captions, optional observed sender usernames, bounded media metadata/IDs, subscriptions and
 their signing credentials, and delivery records live in the storage attached to their Site, not a separate server operated by this repository's
 author. Inbox records expire after seven days; outgoing operation metadata after
 thirty days. Physical cleanup happens with activity and may occur later; other
@@ -27,6 +27,8 @@ reply transcript. Telegram and ChatGPT may retain their own records separately.
 New confirmed bot text is also stored separately for seven days and can join
 authorized incoming history via `include_outgoing`; no old Telegram history is
 fetched or reconstructed. Explain this before setup/upgrade consent.
+Usernames are per-message observations, not verified current handles; they share
+the seven-day inbox window, and missing/legacy values are never reconstructed.
 Link the [retention details](../../../docs/operations.md#retention-privacy-and-maintenance).
 Private topic title metadata and frozen rename operations persist for the
 installation's lifetime, outside inbox/send retention. Disclose title strings,

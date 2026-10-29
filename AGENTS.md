@@ -138,6 +138,12 @@ keys, message text, instance URLs or deployment IDs.
 | `configure_telegram_webhook({})` | Validate the bot, refuse a different existing webhook, register only this Site's `/telegram/webhook`. |
 | `retry_pending_events(chat_id?, limit?)` | Explicit owner recovery of unexpired pending events, limit 1-10. |
 
+Incoming events and recent history may include `sender_username` without `@`, an
+untrusted per-message observation, never a verified current handle or identity.
+Unavailable/invalid values, legacy rows and outgoing bot text omit it. Numeric
+sender IDs remain the only sender authorization basis. See
+[sender usernames](docs/sender-usernames.md).
+
 The event is `telegram.message.received`, filtered by a string `chat_id`, with one
 active subscription per chat. Its `text` is the message text, or for media a type
 notification plus caption; optional `media` holds bounded allowlisted metadata, a

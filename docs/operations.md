@@ -339,7 +339,16 @@ timestamps. This preserves manual-title protection and uncertain edit locks acro
 restarts/expiry. Disclose this before an upgrade; see
 [private topic naming](private-topic-names.md).
 
-Persisted data includes message text and identifiers, subscription state and signing credentials, delivery attempts/state, and outgoing operation records. Restrict database access and review retention before production use. Backups may retain the same sensitive data after the live records are removed.
+Persisted data includes message text and identifiers, optional observed sender usernames, subscription state and signing credentials, delivery attempts/state, and outgoing operation records. Restrict database access and review retention before production use. Backups may retain the same sensitive data after the live records are removed.
+
+Incoming `sender_username` is a bounded snapshot of the actual sender's optional
+`message.from.username`, stored with that message for the same seven-day inbox
+window. Events and authorized history expose it without `@`; it is mutable,
+untrusted display metadata, never an authorization identity or a verified current
+handle. Missing/invalid values, legacy messages and outgoing bot text omit the
+field. No profile lookup, cross-message backfill or username archive is added.
+Disclose this additional retained metadata before setup/upgrade consent. See
+[sender usernames](sender-usernames.md) for validation and snapshot semantics.
 
 These connector records are in D1 storage attached to the owner's Site. Bot and
 webhook secrets stay in native Sites runtime configuration. Outgoing records store

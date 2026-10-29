@@ -10,7 +10,7 @@ import type { BackgroundContext, Env, Runtime } from './env.ts';
 import { AppError } from './errors.ts';
 import { checkGroup, groupCurrent } from './groups.ts';
 import { readJson } from './http.ts';
-import { CHAT_SCHEMA, MEDIA_SCHEMA, THREAD_SCHEMA } from './schemas.ts';
+import { CHAT_SCHEMA, MEDIA_SCHEMA, SENDER_USERNAME_SCHEMA, THREAD_SCHEMA } from './schemas.ts';
 import { groupId, objectArgs } from './validate.ts';
 
 // MCP event subscription lifecycle for telegram.message.received: one active
@@ -35,6 +35,7 @@ export const EVENT_DEFINITION = {
       update_id: { type: 'integer' },
       chat_id: { type: 'string' },
       sender_id: { type: 'string' },
+      sender_username: SENDER_USERNAME_SCHEMA,
       message_id: { type: 'integer' },
       message_thread_id: THREAD_SCHEMA,
       text: { type: 'string' },
