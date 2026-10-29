@@ -5,6 +5,7 @@ import { first, requireDatabase, rows } from './db.ts';
 import type { Env, Runtime } from './env.ts';
 import { AppError } from './errors.ts';
 import { checkGroup, groupCurrent } from './groups.ts';
+import { normalizedMentions } from './mentions.ts';
 import { botId } from './telegram.ts';
 import { requestedThread, threadScope } from './threads.ts';
 import type { UntypedJson } from './untyped.ts';
@@ -160,10 +161,10 @@ export async function recentMessages(args: UntypedJson, env: Env, runtime: Runti
   if (args.include_outgoing) {
     messages = await rows(
       db,
-      `SELECT event_id,update_id,chat_id,sender_id,sender_username,message_id,message_thread_id,text,media_json,occurred_at,state,last_error,role FROM (
-      SELECT event_id,update_id,chat_id,sender_id,sender_username,message_id,message_thread_id,text,media_json,occurred_at,state,last_error,'user' AS role FROM inbox
+      `SELECT event_id,update_id,chat_id,sender_id,sender_username,message_id,message_thread_id,text,media_json,occurred_at,state,last_error,role,mentions_json FROM (
+      SELECT event_id,update_id,chat_id,sender_id,sender_username,message_id,message_thread_id,text,media_json,occurred_at,state,last_error,'user' AS role,NULL AS mentions_json FROM inbox
       WHERE chat_id=? AND bot_id=? AND received_at>=? AND (? IS NULL OR group_revision=?) AND ${scope.column} IS ? AND sender_id IN (?,?)
-      UNION ALL SELECT NULL,NULL,chat_id,bot_id,NULL,message_id,message_thread_id,text,NULL,occurred_at,'sent',NULL,'bot' FROM sent_messages
+      UNION ALL SELECT NULL,NULL,chat_id,bot_id,NULL,message_id,message_thread_id,text,NULL,occurred_at,'sent',NULL,'bot',mentions_json FROM sent_messages
       WHERE chat_id=? AND bot_id=? AND sent_at>=? AND (? IS NULL OR group_revision=?) AND ${scope.column} IS ?)
       ORDER BY message_id DESC LIMIT ?`,
       chat,
@@ -200,6 +201,9 @@ export async function recentMessages(args: UntypedJson, env: Env, runtime: Runti
       if (message.message_thread_id === null) delete message.message_thread_id;
   }
   for (const message of messages) {
+    if (message.mentions_json)
+      message.mentions = normalizedMentions(JSON.parse(message.mentions_json), message.text);
+    delete message.mentions_json;
     const username = senderUsername(message.sender_username);
     if (username !== null) message.sender_username = username;
     else delete message.sender_username;

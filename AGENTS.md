@@ -129,7 +129,7 @@ keys, message text, instance URLs or deployment IDs.
 | `get_connector_status()` | Owner-only configuration booleans, private chat IDs, group access state, origin-only callback candidate and delivery counts. Not a live bot-access check. |
 | `get_recent_messages(chat_id, limit?, message_thread_id?, include_outgoing?)` | Retained messages for one chat/topic, limit 1-20; forum groups need an explicit topic (1 = General); group history is current-epoch only. `include_outgoing` adds confirmed bot text. |
 | `get_message_media(chat_id, message_id, update_id, message_thread_id?, file_index?, mode?)` | Read a retained, currently authorized file: `auto` up to 2,000,000 bytes, `on_demand` up to 8,000,000. Only supported images become model-readable. |
-| `send_message(chat_id, text, idempotency_key, reply_to_message_id?, message_thread_id?)` | Authorized text with durable idempotency. Forum groups need an explicit topic. Quoting is optional. |
+| `send_message(chat_id, text, idempotency_key, reply_to_message_id?, message_thread_id?, mentions?)` | Authorized literal text with optional explicit ID mentions and durable idempotency. Forum groups need an explicit topic. Quoting is optional. |
 | `get_private_topic(chat_id, message_thread_id)` | Read durable title provenance/revision and busy operation state for one approved private named topic. |
 | `rename_private_topic(chat_id, message_thread_id, name, mode, expected_revision, idempotency_key)` | Revision-guarded exact private-topic title edit, with durable idempotency and uncertainty locks. Automatic mode requires implicit provenance; manual mode needs an explicit owner-directed change. |
 | `set_message_reaction(chat_id, message_id, update_id, reaction, idempotency_key, message_thread_id?)` | Set, change or clear (empty string) this bot's emoji reaction on an exact retained incoming message. Separate from text coverage and keys. |
@@ -143,6 +143,13 @@ untrusted per-message observation, never a verified current handle or identity.
 Unavailable/invalid values, legacy rows and outgoing bot text omit it. Numeric
 sender IDs remain the only sender authorization basis. See
 [sender usernames](docs/sender-usernames.md).
+
+Explicit outbound [ID mentions](docs/outbound-mentions.md) require approved actual
+sender provenance retained in the exact chat/topic and current group epoch. Only
+bounded, nonoverlapping UTF-16 ranges become generated inline user-link entities;
+labels grant no authority. Freeze normalized targets/ranges/entities in send hashes.
+`tests/mentions.test.mjs` guards provenance, UTF-16 validation, literal labels,
+private/forum routing, epoch isolation, concurrency, legacy replay and uncertainty.
 
 The event is `telegram.message.received`, filtered by a string `chat_id`, with one
 active subscription per chat. Its `text` is the message text, or for media a type

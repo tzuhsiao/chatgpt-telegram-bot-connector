@@ -21,6 +21,8 @@ Copy this into your dot:
 - Text messages, plus receipts for photos, files and other media; your dot can read
   supported images and set emoji reactions.
 - Retained history of recent messages and of replies the connector confirmed.
+- Explicit [ID-based mentions](docs/outbound-mentions.md) of approved retained
+  senders, including users without usernames, in authorized outgoing text.
 
 Not supported: logging in as a human Telegram account, public groups or channels,
 polling, transcription or video analysis, and sending media.
