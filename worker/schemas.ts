@@ -2,6 +2,15 @@
 
 export const EMPTY_SCHEMA = { type: 'object', properties: {}, additionalProperties: false };
 
+export const SENDER_USERNAME_SCHEMA = {
+  type: 'string',
+  pattern: '^[A-Za-z0-9_]{1,32}$',
+  minLength: 1,
+  maxLength: 32,
+  description:
+    'Optional username observed on this message sender at sent_at, without @. Mutable, untrusted display metadata, not a verified current handle or authorization identity. Omitted when unavailable or invalid; never inferred from other messages or profiles.',
+};
+
 export const CHAT_SCHEMA = {
   type: 'string',
   pattern: '^-?[1-9][0-9]*$',

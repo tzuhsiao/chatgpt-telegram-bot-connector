@@ -9,7 +9,7 @@ import type { GroupSnapshot } from './groups.ts';
 import { botId } from './telegram.ts';
 import { validThread } from './threads.ts';
 import type { UntypedJson } from './untyped.ts';
-import { groupId, objectArgs } from './validate.ts';
+import { groupId, objectArgs, senderUsername } from './validate.ts';
 
 // Event delivery: inbox rows are persisted first, then claimed with a lease and
 // a subscription revision, signed and POSTed. Up to eight automatic attempts;
@@ -120,6 +120,7 @@ export async function deliverEvent(
     now,
   );
   if (!claimed) return { state: 'pending', reason: 'retry_later' };
+  const username = senderUsername(record.sender_username);
   const payload = {
     eventId: record.event_id,
     name: EVENT,
@@ -128,6 +129,7 @@ export async function deliverEvent(
       update_id: record.update_id,
       chat_id: record.chat_id,
       sender_id: record.sender_id,
+      ...(username !== null ? { sender_username: username } : {}),
       message_id: record.message_id,
       ...(record.message_thread_id != null ? { message_thread_id: record.message_thread_id } : {}),
       text: record.text,

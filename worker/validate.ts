@@ -1,5 +1,11 @@
 import { AppError } from './errors.ts';
 
+// Bounded observed display metadata, never an identity or authorization input.
+// Allow short collectible handles; preserve case and never repair invalid values.
+export function senderUsername(value: unknown): string | null {
+  return typeof value === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(value) ? value : null;
+}
+
 // Rejects non-objects, unknown keys and missing required keys.
 export function objectArgs(
   value: unknown,

@@ -119,8 +119,8 @@ export async function telegramWebhook(
     await run(
       // cleanup() above already required the database binding.
       env.DB as D1Database,
-      `INSERT INTO inbox(event_id,bot_id,update_id,chat_id,sender_id,message_id,text,occurred_at,received_at,group_revision,message_thread_id,media_json,reaction_album,state,last_error)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,
+      `INSERT INTO inbox(event_id,bot_id,update_id,chat_id,sender_id,sender_username,message_id,text,occurred_at,received_at,group_revision,message_thread_id,media_json,reaction_album,state,last_error)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,
       CASE WHEN ?=1 OR COALESCE((SELECT value FROM connector_meta WHERE key=?),'')<>? THEN 'failed' ELSE 'pending' END,
       CASE WHEN ?=1 OR COALESCE((SELECT value FROM connector_meta WHERE key=?),'')<>? THEN 'subscription_cancelled' ELSE NULL END)
       ON CONFLICT(bot_id,update_id) DO NOTHING`,
@@ -129,6 +129,7 @@ export async function telegramWebhook(
       message.update_id,
       message.chat_id,
       message.sender_id,
+      message.sender_username,
       message.message_id,
       message.text,
       message.occurred_at,

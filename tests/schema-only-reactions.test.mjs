@@ -120,6 +120,14 @@ test('legacy text can react while legacy media stays excluded and model-readable
 test('new ingestion explicitly overrides the legacy default and rejects raw album edge cases', async (t) => {
   const { db, env, worker, reactions, react } = fixture(t);
   db.sqlite.exec(migration);
+  // Current ingestion requires the full schema; the tests above isolate 0006.
+  const entries = JSON.parse(
+    readFileSync(new URL('../drizzle/meta/_journal.json', import.meta.url), 'utf8'),
+  ).entries;
+  const reactionIndex = entries.findIndex((entry) => entry.tag === '0006_message_reactions');
+  assert.notEqual(reactionIndex, -1, 'Reaction migration must exist in the journal.');
+  for (const entry of entries.slice(reactionIndex + 1))
+    db.sqlite.exec(readFileSync(new URL(`../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8'));
   const cases = [
     { id: 10 },
     { id: 11, photo: true },

@@ -8,7 +8,7 @@ import { checkGroup, groupCurrent } from './groups.ts';
 import { botId } from './telegram.ts';
 import { requestedThread, threadScope } from './threads.ts';
 import type { UntypedJson } from './untyped.ts';
-import { groupId, objectArgs } from './validate.ts';
+import { groupId, objectArgs, senderUsername } from './validate.ts';
 
 // Owner-only read paths. Status reports configuration booleans, IDs, group
 // access state and delivery counts without secrets, callback paths or message
@@ -160,10 +160,10 @@ export async function recentMessages(args: UntypedJson, env: Env, runtime: Runti
   if (args.include_outgoing) {
     messages = await rows(
       db,
-      `SELECT event_id,update_id,chat_id,sender_id,message_id,message_thread_id,text,media_json,occurred_at,state,last_error,role FROM (
-      SELECT event_id,update_id,chat_id,sender_id,message_id,message_thread_id,text,media_json,occurred_at,state,last_error,'user' AS role FROM inbox
+      `SELECT event_id,update_id,chat_id,sender_id,sender_username,message_id,message_thread_id,text,media_json,occurred_at,state,last_error,role FROM (
+      SELECT event_id,update_id,chat_id,sender_id,sender_username,message_id,message_thread_id,text,media_json,occurred_at,state,last_error,'user' AS role FROM inbox
       WHERE chat_id=? AND bot_id=? AND received_at>=? AND (? IS NULL OR group_revision=?) AND ${scope.column} IS ? AND sender_id IN (?,?)
-      UNION ALL SELECT NULL,NULL,chat_id,bot_id,message_id,message_thread_id,text,NULL,occurred_at,'sent',NULL,'bot' FROM sent_messages
+      UNION ALL SELECT NULL,NULL,chat_id,bot_id,NULL,message_id,message_thread_id,text,NULL,occurred_at,'sent',NULL,'bot' FROM sent_messages
       WHERE chat_id=? AND bot_id=? AND sent_at>=? AND (? IS NULL OR group_revision=?) AND ${scope.column} IS ?)
       ORDER BY message_id DESC LIMIT ?`,
       chat,
@@ -185,7 +185,7 @@ export async function recentMessages(args: UntypedJson, env: Env, runtime: Runti
   } else {
     messages = await rows(
       db,
-      `SELECT event_id,update_id,chat_id,sender_id,message_id,text,media_json,occurred_at,state,last_error,message_thread_id FROM inbox WHERE chat_id=? AND bot_id=? AND received_at>=? AND (? IS NULL OR group_revision=?) AND ${scope.column} IS ? AND sender_id IN (?,?) ORDER BY received_at DESC,update_id DESC LIMIT ?`,
+      `SELECT event_id,update_id,chat_id,sender_id,sender_username,message_id,text,media_json,occurred_at,state,last_error,message_thread_id FROM inbox WHERE chat_id=? AND bot_id=? AND received_at>=? AND (? IS NULL OR group_revision=?) AND ${scope.column} IS ? AND sender_id IN (?,?) ORDER BY received_at DESC,update_id DESC LIMIT ?`,
       chat,
       bot,
       cutoff,
@@ -200,6 +200,9 @@ export async function recentMessages(args: UntypedJson, env: Env, runtime: Runti
       if (message.message_thread_id === null) delete message.message_thread_id;
   }
   for (const message of messages) {
+    const username = senderUsername(message.sender_username);
+    if (username !== null) message.sender_username = username;
+    else delete message.sender_username;
     if (message.media_json) message.media = JSON.parse(message.media_json);
     delete message.media_json;
   }

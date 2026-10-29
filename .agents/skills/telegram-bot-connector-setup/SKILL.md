@@ -18,7 +18,7 @@ the bridge lets your dot receive the message and reply there. It runs on Sites,
 so your computer does not need to stay on. The Site hosts the bridge and storage;
 the plugin gives your dot the tools to use it."
 
-Explain that incoming text/captions, bounded media metadata/IDs, subscriptions and
+Explain that incoming text/captions, optional observed sender usernames, bounded media metadata/IDs, subscriptions and
 their signing credentials, and delivery records live in the storage attached to their Site, not a separate server operated by this repository's
 author. Inbox records expire after seven days; outgoing operation metadata after
 thirty days. Physical cleanup happens with activity and may occur later; other
@@ -27,6 +27,8 @@ reply transcript. Telegram and ChatGPT may retain their own records separately.
 New confirmed bot text is also stored separately for seven days and can join
 authorized incoming history via `include_outgoing`; no old Telegram history is
 fetched or reconstructed. Explain this before setup/upgrade consent.
+Usernames are per-message observations, not verified current handles; they share
+the seven-day inbox window, and missing/legacy values are never reconstructed.
 Link the [retention details](../../../docs/operations.md#retention-privacy-and-maintenance).
 Private topic title metadata and frozen rename operations persist for the
 installation's lifetime, outside inbox/send retention. Disclose title strings,
@@ -165,6 +167,26 @@ Look up tasks before every create/retry and preserve the complete trigger set on
 updates. One subscription alone does not prove the correct single enabled task.
 Stale/duplicate tasks, unknown operations or mismatched subscribers require
 reconciliation before creating or activating another responder.
+
+### Username metadata upgrades
+
+Before declaring this upgrade complete, refresh the existing plugin's tool/event
+discovery through supported host controls and verify genuine event discovery
+advertises optional `sender_username`. This repository does not establish whether
+a host caches or enforces earlier payload schemas. Preserve the Site, plugin,
+task and complete trigger set; do not blindly recreate subscriptions. If the host
+requires reconnecting or renewing, reconcile the exact existing subscription and
+operation state and obtain applicable approval before that mutation. Unavailable
+refresh/discovery remains a verification gap.
+
+With separate test-message and history-read consent, have an authorized sender
+with a username send one fresh message in the exact approved chat/topic. Privately
+verify the actual delivered event includes the observed `sender_username` for the
+correct `sender_id`, and compare that same retained message through
+`get_recent_messages`. Record discovery, callback acceptance, task event consumption
+and the event/history match separately. Without a username-bearing sample, leave
+that acceptance gate unverified; never infer or backfill a handle. Source/CI tests
+alone do not establish these hosted results.
 
 ## 4. Connect the bot and verify conversation
 

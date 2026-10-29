@@ -6,7 +6,7 @@ import { MEDIA_TYPES } from './schemas.ts';
 import { botId } from './telegram.ts';
 import { incomingThread } from './threads.ts';
 import type { UntypedJson } from './untyped.ts';
-import { groupId, numericId } from './validate.ts';
+import { groupId, numericId, senderUsername } from './validate.ts';
 
 // Intake: turn one raw Telegram update into a bounded, allowlisted inbox record.
 // Only allowlisted human senders in approved chats pass; message text, captions
@@ -167,13 +167,13 @@ export function authorizedMessage(raw: unknown, env: Env, now: number) {
   )
     return null;
   if (message.date * 1000 < now - 7 * DAY) return null;
-  return { update, message, chatInfo, chat, sender };
+  return { update, message, chatInfo, chat, sender, from };
 }
 
 export function normalizedUpdate(raw: unknown, env: Env, now: number) {
   const envelope = authorizedMessage(raw, env, now);
   if (!envelope || serviceMessage(envelope.message)) return null;
-  const { update, message, chatInfo, chat, sender } = envelope;
+  const { update, message, chatInfo, chat, sender, from } = envelope;
   let media: NormalizedMedia | null = null;
   let text: string;
   if (typeof message.text === 'string') {
@@ -188,6 +188,7 @@ export function normalizedUpdate(raw: unknown, env: Env, now: number) {
     update_id: update.update_id,
     chat_id: chat,
     sender_id: sender,
+    sender_username: senderUsername(from.username),
     message_id: message.message_id,
     message_thread_id: chatInfo.type === 'private' ? incomingThread(message, false, true) : null,
     reaction_album: Object.hasOwn(message, 'media_group_id') ? 1 : 0,
