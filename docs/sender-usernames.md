@@ -44,5 +44,7 @@ consented username-bearing event/history verification in the
 Host schema caching/enforcement is unverified; do not assume subscription recreation
 is needed or sufficient to refresh discovery.
 
-This change does not add Telegram entities, parse modes or ID-based mentions to
-`send_message`. It does not change tool/event names, routing or permissions.
+Username preservation does not itself authorize a mention. The separate
+[explicit ID-mention contract](outbound-mentions.md) supports inline entities using
+approved retained sender IDs, independently of observed usernames. No unrestricted
+parse mode is exposed; tool/event names, routing and existing permissions remain.

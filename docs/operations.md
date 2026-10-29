@@ -332,6 +332,12 @@ For an uncertain operation, inspect the destination chat privately and reconcile
 
 ## Retention, privacy, and maintenance
 
+Optional [outbound ID mentions](outbound-mentions.md) retain normalized target IDs
+and UTF-16 ranges with their operation (thirty days) and confirmed sent-history row
+(seven days). Plain-text/legacy rows omit mention metadata. These are request and
+send records, not proof of reading or guaranteed push alerts; deployment and host
+discovery refresh require their usual separately authorized operational steps.
+
 Private topic title provenance and rename operation records persist for the
 installation's lifetime, outside inbox/send retention. They include topic IDs,
 title strings, frozen requested titles, revision/provenance, hashes, states and

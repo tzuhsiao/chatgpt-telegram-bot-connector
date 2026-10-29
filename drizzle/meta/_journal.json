@@ -64,6 +64,13 @@
       "when": 1793232000000,
       "tag": "0008_sender_username",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793232001000,
+      "tag": "0009_outbound_mentions",
+      "breakpoints": true
     }
   ]
 }

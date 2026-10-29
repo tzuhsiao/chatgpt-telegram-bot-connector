@@ -348,6 +348,10 @@ test('schema-only migration leaves legacy rows unknown and pending legacy events
     (await db.prepare('SELECT sender_username FROM inbox').first()).sender_username,
     null,
   );
+  // The current Worker runs only after all subsequent schema-only upgrades.
+  db.sqlite.exec(
+    readFileSync(new URL('../drizzle/0009_outbound_mentions.sql', import.meta.url), 'utf8'),
+  );
   const { env, worker, state } = await fixture(t, { db });
   await call(worker, env, 'retry_pending_events', { chat_id: '10001' });
   assert.equal(state.events.length, 1);

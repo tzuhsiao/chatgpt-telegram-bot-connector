@@ -5,6 +5,7 @@ import { first, requireDatabase, run } from './db.ts';
 import type { Env, Runtime } from './env.ts';
 import { AppError } from './errors.ts';
 import { checkGroup, groupCurrent } from './groups.ts';
+import { mentionEntities, normalizedMentions, requireMentionTargets } from './mentions.ts';
 import { REACTION_EMOJI } from './schemas.ts';
 import { botId, telegramApi } from './telegram.ts';
 import { incomingThread, requestedThread, threadScope, validThread } from './threads.ts';
@@ -18,10 +19,10 @@ import { groupId, objectArgs } from './validate.ts';
 // upstream idempotency key.
 
 // `args` are MCP tool arguments, shape-checked by objectArgs on the first line.
-export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime) {
-  objectArgs(
-    args,
-    ['chat_id', 'text', 'idempotency_key', 'reply_to_message_id', 'message_thread_id'],
+export async function sendMessage(input: unknown, env: Env, runtime: Runtime) {
+  const args = objectArgs(
+    input,
+    ['chat_id', 'text', 'idempotency_key', 'reply_to_message_id', 'message_thread_id', 'mentions'],
     ['chat_id', 'text', 'idempotency_key'],
   );
   const chat = requireChat(args.chat_id, env);
@@ -36,23 +37,37 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
     throw new AppError('A stable ASCII idempotency key is required.');
   if (
     args.reply_to_message_id !== undefined &&
-    (!Number.isSafeInteger(args.reply_to_message_id) || args.reply_to_message_id <= 0)
+    (typeof args.reply_to_message_id !== 'number' ||
+      !Number.isSafeInteger(args.reply_to_message_id) ||
+      args.reply_to_message_id <= 0)
   )
     throw new AppError('Invalid reply message ID.');
   if (args.message_thread_id !== undefined && !validThread(args.message_thread_id))
     throw new AppError('A valid topic ID is required.');
   const db = requireDatabase(env);
+  const mentions = normalizedMentions(args.mentions, args.text);
+  const entities = mentionEntities(mentions);
+  const mentionResult = mentions.length ? { mentions } : {};
+  const mentionsJson = mentions.length ? JSON.stringify(mentions) : null;
   const operationKey = await digest(
     JSON.stringify([env.OWNER_USER_ID, botId(env), args.idempotency_key]),
   );
-  const requestParts = [chat, args.text, args.reply_to_message_id ?? null];
+  const requestParts: unknown[] = [chat, args.text, args.reply_to_message_id ?? null];
   if (args.message_thread_id !== undefined) requestParts.push(args.message_thread_id);
+  // Keep pre-upgrade plain-text hashes byte-for-byte, including omitted topics.
+  if (mentions.length) requestParts.push({ mentions, entities });
   const requestHash = await digest(JSON.stringify(requestParts));
-  async function reused(existing: UntypedJson) {
+  async function reused(existing: Record<string, unknown> | null) {
+    if (!existing)
+      throw new AppError('Send operation is unavailable; reconcile privately.', 200, -32003);
     if (existing.request_hash !== requestHash)
       throw new AppError('Idempotency key conflicts with an earlier request.', 200, -32004);
     const now = runtime.now();
-    if (existing.state === 'sending' && existing.updated_at < now - 30000) {
+    if (
+      existing.state === 'sending' &&
+      typeof existing.updated_at === 'number' &&
+      existing.updated_at < now - 30000
+    ) {
       await run(
         db,
         "UPDATE outgoing SET state='uncertain',error_code='interrupted',updated_at=? WHERE operation_key=? AND state='sending'",
@@ -66,6 +81,7 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
       message_id: existing.message_id ?? null,
       reused: true,
       requires_review: existing.state !== 'sent',
+      ...mentionResult,
       ...(existing.error_code ? { error: existing.error_code } : {}),
     };
   }
@@ -93,6 +109,8 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
   }
   const thread = blocked ? null : requestedThread(args, group, !groupId(chat));
   const scope = threadScope(thread, !groupId(chat));
+  if (!blocked && mentions.length)
+    await requireMentionTargets(mentions, chat, thread, group?.revision ?? null, env, runtime);
   if (!blocked && (group?.is_forum || !groupId(chat)) && args.reply_to_message_id !== undefined) {
     // checkGroup above already required this group to be approved.
     const senders = group ? (groupConfig(env).get(chat) as string[]) : [chat, null];
@@ -123,7 +141,7 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
   const now = runtime.now();
   const inserted = await run(
     db,
-    'INSERT INTO outgoing(operation_key,request_hash,chat_id,state,error_code,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(operation_key) DO NOTHING',
+    'INSERT INTO outgoing(operation_key,request_hash,chat_id,state,error_code,created_at,updated_at,mentions_json) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(operation_key) DO NOTHING',
     operationKey,
     requestHash,
     chat,
@@ -131,6 +149,7 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
     blocked ? 'group_access_blocked' : null,
     now,
     now,
+    mentionsJson,
   );
   if (!inserted.meta?.changes)
     return reused(await first(db, 'SELECT * FROM outgoing WHERE operation_key=?', operationKey));
@@ -152,7 +171,34 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
       reused: false,
       requires_review: true,
       error: 'group_access_blocked',
+      ...mentionResult,
     };
+  }
+  // Recheck provenance after reserving the operation, before dispatch. Losing a
+  // target records failure under the frozen key; it never strips mentions/resends.
+  if (mentions.length) {
+    try {
+      await requireMentionTargets(mentions, chat, thread, group?.revision ?? null, env, runtime);
+    } catch {
+      const saved = await run(
+        db,
+        "UPDATE outgoing SET state='failed',error_code='mention_access_changed',updated_at=? WHERE operation_key=? AND state='sending'",
+        runtime.now(),
+        operationKey,
+      );
+      if (!saved.meta?.changes)
+        return reused(
+          await first(db, 'SELECT * FROM outgoing WHERE operation_key=?', operationKey),
+        );
+      return {
+        state: 'failed',
+        message_id: null,
+        reused: false,
+        requires_review: true,
+        error: 'mention_access_changed',
+        ...mentionResult,
+      };
+    }
   }
   const claimed = await run(
     db,
@@ -180,6 +226,7 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
     text: args.text,
     link_preview_options: { is_disabled: true },
   };
+  if (mentions.length) body.entities = entities;
   if (thread !== null && (!group || thread !== 1)) body.message_thread_id = thread;
   if (args.reply_to_message_id !== undefined)
     body.reply_parameters = {
@@ -187,11 +234,19 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
       allow_sending_without_reply: false,
     };
   try {
-    const message: UntypedJson = await telegramApi('sendMessage', body, env, runtime);
+    const response = await telegramApi('sendMessage', body, env, runtime);
+    if (!response || typeof response !== 'object' || Array.isArray(response))
+      throw new Error('Ambiguous API response.');
+    const message = response as Record<string, unknown>;
+    const responseChat = message.chat;
     if (
+      typeof message.message_id !== 'number' ||
       !Number.isSafeInteger(message?.message_id) ||
       message.message_id <= 0 ||
-      String(message.chat?.id) !== chat
+      !responseChat ||
+      typeof responseChat !== 'object' ||
+      Array.isArray(responseChat) ||
+      String((responseChat as Record<string, unknown>).id) !== chat
     )
       throw new Error('Ambiguous API response.');
     if (
@@ -209,8 +264,8 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
         .bind(message.message_id, sentAt, operationKey),
       db
         .prepare(
-          `INSERT INTO sent_messages(operation_key,bot_id,chat_id,message_id,message_thread_id,group_revision,text,occurred_at,sent_at)
-        SELECT ?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM outgoing WHERE operation_key=? AND state='sent' AND message_id=?) ON CONFLICT DO NOTHING`,
+          `INSERT INTO sent_messages(operation_key,bot_id,chat_id,message_id,message_thread_id,group_revision,text,occurred_at,sent_at,mentions_json)
+        SELECT ?,?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM outgoing WHERE operation_key=? AND state='sent' AND message_id=?) ON CONFLICT DO NOTHING`,
         )
         .bind(
           operationKey,
@@ -222,19 +277,26 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
           args.text,
           new Date(sentAt).toISOString(),
           sentAt,
+          mentionsJson,
           operationKey,
           message.message_id,
         ),
     ]);
     // D1 batch returns one result per statement.
-    if (!saved[0]!.meta?.changes)
+    if (!saved[0]?.meta?.changes)
       return reused(await first(db, 'SELECT * FROM outgoing WHERE operation_key=?', operationKey));
-    return { state: 'sent', message_id: message.message_id, reused: false, requires_review: false };
-  } catch (error: UntypedJson) {
+    return {
+      state: 'sent',
+      message_id: message.message_id,
+      reused: false,
+      requires_review: false,
+      ...mentionResult,
+    };
+  } catch (error: unknown) {
     // No automatic resend after an ambiguous result; Telegram has no matching idempotency key.
-    const state = error instanceof AppError && error.telegramCode ? 'failed' : 'uncertain';
-    const code =
-      state === 'failed' ? `telegram_${error.telegramCode}` : 'network_or_response_unknown';
+    const telegramCode = error instanceof AppError ? error.telegramCode : undefined;
+    const state = telegramCode ? 'failed' : 'uncertain';
+    const code = state === 'failed' ? `telegram_${telegramCode}` : 'network_or_response_unknown';
     const saved = await run(
       db,
       "UPDATE outgoing SET state=?,error_code=?,updated_at=? WHERE operation_key=? AND state='sending'",
@@ -245,7 +307,14 @@ export async function sendMessage(args: UntypedJson, env: Env, runtime: Runtime)
     );
     if (!saved.meta?.changes)
       return reused(await first(db, 'SELECT * FROM outgoing WHERE operation_key=?', operationKey));
-    return { state, message_id: null, reused: false, requires_review: true, error: code };
+    return {
+      state,
+      message_id: null,
+      reused: false,
+      requires_review: true,
+      error: code,
+      ...mentionResult,
+    };
   }
 }
 
