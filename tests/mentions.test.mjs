@@ -313,14 +313,89 @@ test('provenance loss or group revocation after reservation prevents mention dis
         };
       };
       const result = await call(worker, env, 'send_message', args());
-      assert.ok(result.body.error?.code === -32001 || data(result)?.state === 'failed');
+      const error = revoke === 'target' ? 'mention_access_changed' : 'group_access_blocked';
+      assert.equal(result.body.error, undefined);
+      assert.equal(result.body.result.isError, true);
+      assert.deepEqual(
+        { ...data(result), diagnostics: undefined },
+        {
+          state: 'failed',
+          message_id: null,
+          reused: false,
+          requires_review: true,
+          error,
+          mentions: [mention()],
+          diagnostics: undefined,
+        },
+      );
+      assert.equal(data(result).diagnostics.operation_state, 'failed');
+      assert.equal(data(result).diagnostics.category, 'permission');
+      assert.deepEqual(data(result).diagnostics.retry, {
+        safe: false,
+        action: 'reconcile_privately',
+      });
       const stored = await prepare('SELECT * FROM outgoing').first();
       assert.equal(stored.state, 'failed');
-      assert.equal(data(await call(worker, env, 'send_message', args())).state, 'failed');
+      assert.equal(stored.error_code, error);
+      const replay = data(await call(worker, env, 'send_message', args()));
+      assert.equal(replay.state, 'failed');
+      assert.equal(replay.error, error);
+      assert.equal(replay.reused, true);
+      assert.equal(replay.diagnostics.operation_state, 'failed');
+      assert.equal(
+        (await call(worker, env, 'send_message', args({ mentions: [] }))).body.error?.code,
+        -32004,
+      );
       assert.deepEqual(JSON.parse(stored.mentions_json), [mention()]);
       assert.equal(state.sends.length, 0);
     });
   }
+});
+
+test('malformed stored mentions are omitted without aborting or fabricating history metadata', async (t) => {
+  const { env, worker, state, receive } = await fixture(t);
+  await receive();
+  assert.equal(data(await call(worker, env, 'send_message', args())).state, 'sent');
+  assert.equal(
+    data(await call(worker, env, 'send_message', args({ idempotency_key: 'healthy-history-row' })))
+      .state,
+    'sent',
+  );
+  for (const damaged of [
+    '{',
+    'null',
+    '{}',
+    '"untrusted"',
+    JSON.stringify([mention('20002', 0, 99)]),
+    JSON.stringify([mention(), mention('20002&other=1', 0, 1)]),
+    JSON.stringify([mention(), mention('10001', 1, 1)]),
+  ]) {
+    await env.DB.prepare('UPDATE sent_messages SET mentions_json=? WHERE message_id=501')
+      .bind(damaged)
+      .run();
+    const result = await call(worker, env, 'get_recent_messages', {
+      chat_id: GROUP,
+      message_thread_id: 70,
+      include_outgoing: true,
+    });
+    assert.equal(result.body.error, undefined, damaged);
+    const history = data(result).messages;
+    assert.equal(history.length, 3);
+    const corrupt = history.find((message) => message.message_id === 501);
+    assert.equal(corrupt.text, 'Two');
+    assert.equal(Object.hasOwn(corrupt, 'mentions'), false);
+    assert.deepEqual(history.find((message) => message.message_id === 502).mentions, [mention()]);
+    assert.equal(
+      history.some((message) => Object.hasOwn(message, 'mentions_json')),
+      false,
+    );
+    assert.equal(
+      (await env.DB.prepare('SELECT mentions_json FROM sent_messages WHERE message_id=501').first())
+        .mentions_json,
+      damaged,
+    );
+  }
+  assert.equal(state.sends.length, 2);
 });
 
 test('uncertain, rejected and mismatched-topic mention sends never fallback or resend', async (t) => {

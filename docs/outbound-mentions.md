@@ -67,6 +67,8 @@ Replay reports the recorded operation and does not revalidate or resend it. A
 failed, sending or uncertain result must be reconciled privately; never silently
 strip mentions, fall back to another topic or switch keys to resend. Loss of target
 provenance after reservation records `mention_access_changed` under the frozen key.
+The first response reports that recorded `failed` state and requires private
+reconciliation; it is not reported as a request that never reserved a key.
 
 Mention-bearing send results include the normalized `mentions`, describing what
 was requested, including on failed/uncertain results; they do not certify Telegram's
@@ -74,9 +76,12 @@ rendering. Migration `0009_outbound_mentions` adds nullable `mentions_json` to
 `outgoing` (thirty-day operation retention) and `sent_messages` (seven-day confirmed
 history). Mixed `get_recent_messages(..., include_outgoing: true)` returns mentions
 only for corresponding confirmed bot rows, under existing exact topic/current-epoch
-access. Incoming rows and legacy/plain-text bot rows omit the field. Metadata expires
-with its containing record under existing opportunistic cleanup, without a separate
-profile store or indefinitely retained label. The label is already part of text.
+access. Incoming rows and legacy/plain-text bot rows omit the field.
+Damaged stored mention metadata is also omitted for that row without discarding its
+text or other history rows; it is never repaired or partially accepted as valid mentions.
+Metadata expires with its containing record under existing opportunistic cleanup,
+without a separate profile store or indefinitely retained label. The label is
+already part of text.
 
 Deployment, additive migration application, discovery refresh and separately
 authorized hosted acceptance remain operational steps under the

@@ -82,7 +82,7 @@ export function diagnostic(
     category =
       outcome.error === 'telegram_401'
         ? 'configuration'
-        : ['group_access_blocked', 'telegram_403'].includes(outcome.error)
+        : ['group_access_blocked', 'mention_access_changed', 'telegram_403'].includes(outcome.error)
           ? 'permission'
           : state === 'failed'
             ? 'platform'

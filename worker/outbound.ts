@@ -179,14 +179,25 @@ export async function sendMessage(input: unknown, env: Env, runtime: Runtime) {
   if (mentions.length) {
     try {
       await requireMentionTargets(mentions, chat, thread, group?.revision ?? null, env, runtime);
-    } catch (error) {
-      await run(
+    } catch {
+      const saved = await run(
         db,
         "UPDATE outgoing SET state='failed',error_code='mention_access_changed',updated_at=? WHERE operation_key=? AND state='sending'",
         runtime.now(),
         operationKey,
       );
-      throw error;
+      if (!saved.meta?.changes)
+        return reused(
+          await first(db, 'SELECT * FROM outgoing WHERE operation_key=?', operationKey),
+        );
+      return {
+        state: 'failed',
+        message_id: null,
+        reused: false,
+        requires_review: true,
+        error: 'mention_access_changed',
+        ...mentionResult,
+      };
     }
   }
   const claimed = await run(

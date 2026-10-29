@@ -201,8 +201,15 @@ export async function recentMessages(args: UntypedJson, env: Env, runtime: Runti
       if (message.message_thread_id === null) delete message.message_thread_id;
   }
   for (const message of messages) {
-    if (message.mentions_json)
-      message.mentions = normalizedMentions(JSON.parse(message.mentions_json), message.text);
+    if (typeof message.mentions_json === 'string' && typeof message.text === 'string') {
+      try {
+        const stored: unknown = JSON.parse(message.mentions_json);
+        const mentions = normalizedMentions(stored, message.text);
+        if (mentions.length) message.mentions = mentions;
+      } catch {
+        // Damaged display metadata grants nothing and must not hide other history.
+      }
+    }
     delete message.mentions_json;
     const username = senderUsername(message.sender_username);
     if (username !== null) message.sender_username = username;
